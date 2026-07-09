@@ -4,6 +4,8 @@
 #include "MetaFormats.h"
 #include "DL_Sniffer_PDSCH.h"
 #include "SubframeBuffer.h"
+#include "srsran/srsran.h"
+#include "srsran/phy/ue/ue_dl.h"
 #include "falcon/phy/falcon_ue/falcon_ue_dl.h"
 #include "PcapWriter.h"
 #include "MCSTracking.h"

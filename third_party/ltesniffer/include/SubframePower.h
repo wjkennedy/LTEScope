@@ -1,5 +1,7 @@
 #pragma once
 
+#include "srsran/srsran.h"
+#include "srsran/phy/ue/ue_dl.h"
 #include "falcon/phy/falcon_ue/falcon_ue_dl.h"
 #include <vector>
 

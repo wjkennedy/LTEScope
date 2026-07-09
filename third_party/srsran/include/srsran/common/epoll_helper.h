@@ -31,8 +31,13 @@
 #include <signal.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
-#include <sys/timerfd.h>
 #include <unistd.h>
+
+#if defined(__APPLE__)
+#include "timerfd_compat.h"
+#else
+#include <sys/timerfd.h>
+#endif
 
 ///< A virtual interface to handle epoll events (used by timer and port handler)
 class epoll_handler

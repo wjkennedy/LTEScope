@@ -4,7 +4,34 @@
 #include <cstdlib>
 #include <cstring>
 
+#if defined(HAS_RTLSDR_LIB)
 #include <rtl-sdr.h>
+#endif
+
+#if !defined(HAS_RTLSDR_LIB)
+
+RtlSdrSource::~RtlSdrSource() = default;
+
+std::vector<SdrDeviceInfo> RtlSdrSource::listDevices()
+{
+    return {};
+}
+
+void RtlSdrSource::setCenterFreq(double hz) { centerFreq_ = hz; }
+void RtlSdrSource::setSampleRate(double hz) { sampleRate_ = hz; }
+void RtlSdrSource::setGain(double db) { gainDb_ = db; }
+void RtlSdrSource::setBiasTee(bool on) { biasTee_ = on; }
+void RtlSdrSource::setPpm(double ppm) { ppm_ = ppm; }
+
+bool RtlSdrSource::start(int, SdrSampleCb, std::string& err)
+{
+    err = "RTL-SDR support is not available in this build";
+    return false;
+}
+
+void RtlSdrSource::stop() {}
+
+#else
 
 RtlSdrSource::~RtlSdrSource()
 {
@@ -229,3 +256,5 @@ void RtlSdrSource::setPpm(double ppm)
     if (dev_)
         rtlsdr_set_freq_correction(dev_, (int)std::lround(ppm));
 }
+
+#endif

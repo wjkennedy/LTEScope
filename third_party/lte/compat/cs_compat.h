@@ -62,24 +62,6 @@ static inline int posix_memalign(void** memptr, size_t alignment, size_t size)
 #define rindex(s, c) strrchr((s), (c))
 #endif
 
-// <endian.h> host<->little/big helpers are absent on MinGW. x86-64 is
-// little-endian, so LE conversions are identity and BE use bswap builtins.
-#include <stdint.h>
-#ifndef htole16
-#define htole16(x) ((uint16_t)(x))
-#define htole32(x) ((uint32_t)(x))
-#define htole64(x) ((uint64_t)(x))
-#define le16toh(x) ((uint16_t)(x))
-#define le32toh(x) ((uint32_t)(x))
-#define le64toh(x) ((uint64_t)(x))
-#define htobe16(x) __builtin_bswap16((uint16_t)(x))
-#define htobe32(x) __builtin_bswap32((uint32_t)(x))
-#define htobe64(x) __builtin_bswap64((uint64_t)(x))
-#define be16toh(x) __builtin_bswap16((uint16_t)(x))
-#define be32toh(x) __builtin_bswap32((uint32_t)(x))
-#define be64toh(x) __builtin_bswap64((uint64_t)(x))
-#endif
-
 // CPU-affinity is Linux-only; CellScope does not pin threads. Provide no-op
 // cpu_set_t machinery so srsRAN's affinity helpers compile.
 #include <pthread.h>
@@ -133,6 +115,47 @@ static inline struct tm* gmtime_r(const time_t* t, struct tm* out)
 #endif
 
 #endif // _WIN32
+
+#include <stdint.h>
+// <endian.h> host<->little/big helpers are absent on MinGW and are not exposed
+// consistently on macOS. x86-64 and Apple Silicon are little-endian, so LE
+// conversions are identity and BE use bswap builtins.
+#ifndef htole16
+static inline uint16_t htole16(uint16_t x) { return x; }
+#endif
+#ifndef htole32
+static inline uint32_t htole32(uint32_t x) { return x; }
+#endif
+#ifndef htole64
+static inline uint64_t htole64(uint64_t x) { return x; }
+#endif
+#ifndef le16toh
+static inline uint16_t le16toh(uint16_t x) { return x; }
+#endif
+#ifndef le32toh
+static inline uint32_t le32toh(uint32_t x) { return x; }
+#endif
+#ifndef le64toh
+static inline uint64_t le64toh(uint64_t x) { return x; }
+#endif
+#ifndef htobe16
+static inline uint16_t htobe16(uint16_t x) { return __builtin_bswap16(x); }
+#endif
+#ifndef htobe32
+static inline uint32_t htobe32(uint32_t x) { return __builtin_bswap32(x); }
+#endif
+#ifndef htobe64
+static inline uint64_t htobe64(uint64_t x) { return __builtin_bswap64(x); }
+#endif
+#ifndef be16toh
+static inline uint16_t be16toh(uint16_t x) { return __builtin_bswap16(x); }
+#endif
+#ifndef be32toh
+static inline uint32_t be32toh(uint32_t x) { return __builtin_bswap32(x); }
+#endif
+#ifndef be64toh
+static inline uint64_t be64toh(uint64_t x) { return __builtin_bswap64(x); }
+#endif
 
 // Portable fix-up (all platforms): srsRAN's bundled fmt/core.h uses std::array
 // without including <array>. GCC's libstdc++ only forward-declares it via other

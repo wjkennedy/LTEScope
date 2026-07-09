@@ -6,6 +6,8 @@
 #include <vector>
 #include <string.h>
 #include "shared_mutex"
+#include "srsran/srsran.h"
+#include "srsran/phy/ue/ue_dl.h"
 #include "falcon/phy/falcon_ue/falcon_ue_dl.h"
 #include  "Sniffer_dependency.h"
 

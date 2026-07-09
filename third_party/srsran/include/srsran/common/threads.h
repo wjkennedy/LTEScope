@@ -25,8 +25,50 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/timerfd.h>
 #include <unistd.h>
+
+#if defined(__APPLE__)
+#include <string.h>
+#include "timerfd_compat.h"
+typedef struct {
+  unsigned long __bits[16];
+} cs_cpu_set_t;
+#define cpu_set_t cs_cpu_set_t
+#define CPU_SETSIZE 1024
+#define CPU_ZERO(s) memset((s), 0, sizeof(cpu_set_t))
+#define CPU_SET(c, s) ((void)(c), (void)(s))
+#define CPU_CLR(c, s) ((void)(c), (void)(s))
+#define CPU_ISSET(c, s) (0)
+#ifdef __cplusplus
+extern "C" {
+#endif
+static inline int pthread_attr_setaffinity_np(pthread_attr_t* a, size_t sz, const cpu_set_t* s)
+{
+  (void)a;
+  (void)sz;
+  (void)s;
+  return 0;
+}
+static inline int pthread_getaffinity_np(pthread_t t, size_t sz, cpu_set_t* s)
+{
+  (void)t;
+  (void)sz;
+  (void)s;
+  return 0;
+}
+static inline int pthread_setaffinity_np(pthread_t t, size_t sz, const cpu_set_t* s)
+{
+  (void)t;
+  (void)sz;
+  (void)s;
+  return 0;
+}
+#ifdef __cplusplus
+}
+#endif
+#else
+#include <sys/timerfd.h>
+#endif
 
 // Default priority for all threads below UHD threads
 #define DEFAULT_PRIORITY 60
@@ -84,7 +126,11 @@ public:
   void set_name(const std::string& name_)
   {
     name = name_;
+#if defined(__APPLE__)
+    pthread_setname_np(name.c_str());
+#else
     pthread_setname_np(pthread_self(), name.c_str());
+#endif
   }
 
   void wait_thread_finish() { pthread_join(_thread, NULL); }
@@ -108,7 +154,11 @@ protected:
 private:
   static void* thread_function_entry(void* _this)
   {
+#if defined(__APPLE__)
+    pthread_setname_np(((thread*)_this)->name.c_str());
+#else
     pthread_setname_np(pthread_self(), ((thread*)_this)->name.c_str());
+#endif
     ((thread*)_this)->run_thread();
     return NULL;
   }
@@ -159,6 +209,9 @@ private:
 
   int make_periodic()
   {
+#if defined(__APPLE__)
+    return -1;
+#else
     int               ret = -1;
     unsigned int      ns;
     unsigned int      sec;
@@ -184,10 +237,14 @@ private:
       perror("timerfd_create");
     }
     return ret;
+#endif
   }
 
   void wait_period()
   {
+#if defined(__APPLE__)
+    return;
+#else
     unsigned long long missed;
     int                ret;
 
@@ -203,6 +260,7 @@ private:
     if (missed > 0) {
       wakeups_missed += (missed - 1);
     }
+#endif
   }
 };
 

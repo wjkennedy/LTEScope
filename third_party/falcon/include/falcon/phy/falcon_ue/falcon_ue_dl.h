@@ -34,8 +34,6 @@
 extern "C" {
 #endif
 
-#include "srsran/phy/ue/ue_dl.h"
-
 #define MAX_CANDIDATES_BLIND 160
 //#define POWER_ONLY
 //#define LOG_ERRORS

@@ -21,7 +21,11 @@
 
 #include "srsran/common/pcap.h"
 #include <arpa/inet.h>
+#if defined(__APPLE__)
+#include <netinet/udp.h>
+#else
 #include <linux/udp.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
@@ -163,15 +167,15 @@ LTE_PCAP_MAC_UDP_WritePDU(FILE* fd, MAC_Context_Info_t* context, const unsigned 
   }
   // Add dummy UDP header, start with src and dest port
   udp_header       = (struct udphdr*)context_header;
-  udp_header->dest = htons(0xdead);
+  udp_header->uh_dport = htons(0xdead);
   offset += 2;
-  udp_header->source = htons(0xbeef);
+  udp_header->uh_sport = htons(0xbeef);
   offset += 2;
   // length to be filled later
-  udp_header->len = 0x0000;
+  udp_header->uh_ulen = 0x0000;
   offset += 2;
   // dummy CRC
-  udp_header->check = 0x0000;
+  udp_header->uh_sum = 0x0000;
   offset += 2;
 
   // Start magic string
@@ -179,7 +183,7 @@ LTE_PCAP_MAC_UDP_WritePDU(FILE* fd, MAC_Context_Info_t* context, const unsigned 
   offset += strlen(MAC_LTE_START_STRING);
 
   offset += LTE_PCAP_PACK_MAC_CONTEXT_TO_BUFFER(context, &context_header[offset], PCAP_CONTEXT_HEADER_MAX);
-  udp_header->len = htons(length + offset);
+  udp_header->uh_ulen = htons(length + offset);
 
   /****************************************************************/
   /* PCAP Header                                                  */
@@ -412,15 +416,15 @@ int NR_PCAP_MAC_UDP_WritePDU(FILE* fd, mac_nr_context_info_t* context, const uns
 
   // Add dummy UDP header, start with src and dest port
   udp_header       = (struct udphdr*)context_header;
-  udp_header->dest = htons(0xdead);
+  udp_header->uh_dport = htons(0xdead);
   offset += 2;
-  udp_header->source = htons(0xbeef);
+  udp_header->uh_sport = htons(0xbeef);
   offset += 2;
   // length to be filled later
-  udp_header->len = 0x0000;
+  udp_header->uh_ulen = 0x0000;
   offset += 2;
   // dummy CRC
-  udp_header->check = 0x0000;
+  udp_header->uh_sum = 0x0000;
   offset += 2;
 
   // Start magic string
@@ -429,7 +433,7 @@ int NR_PCAP_MAC_UDP_WritePDU(FILE* fd, mac_nr_context_info_t* context, const uns
 
   offset += NR_PCAP_PACK_MAC_CONTEXT_TO_BUFFER(context, &context_header[offset], PCAP_CONTEXT_HEADER_MAX);
 
-  udp_header->len = htons(offset + length);
+  udp_header->uh_ulen = htons(offset + length);
 
   if (offset != 31) {
     printf("ERROR Does not match offset %d != 31\n", offset);

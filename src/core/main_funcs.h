@@ -33,6 +33,7 @@ void drawLte(App&);
 void drawLteUes(App&);
 void drawLteTraffic(App&);
 void drawLteCalls(App&);
+void drawRawDebug(App&);
 #endif
 
 // state/config.cpp

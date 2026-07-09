@@ -33,6 +33,98 @@
 #include <shellapi.h>
 #endif
 
+namespace {
+#ifdef HAS_LTE
+struct RawDebugState
+{
+    std::deque<std::string> lines;
+    long appOffset = 0;
+    long lteOffset = 0;
+    long rawOffset = 0;
+    bool autoScroll = true;
+    char filter[128] = "";
+};
+
+static RawDebugState& rawDebugState()
+{
+    static RawDebugState state;
+    return state;
+}
+
+static void refreshTail(const char* path, const char* prefix, long& offset, std::deque<std::string>& out)
+{
+    FILE* f = std::fopen(path, "rb");
+    if (!f) {
+        return;
+    }
+
+    if (std::fseek(f, 0, SEEK_END) == 0) {
+        long size = std::ftell(f);
+        if (size >= 0 && offset > size) {
+            offset = 0;
+        }
+        if (std::fseek(f, offset, SEEK_SET) == 0) {
+            char buf[2048];
+            while (std::fgets(buf, sizeof(buf), f)) {
+                std::string line = buf;
+                while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+                    line.pop_back();
+                }
+                if (!line.empty()) {
+                    if (prefix && prefix[0] != '\0') {
+                        line = std::string(prefix) + line;
+                    }
+                    out.push_back(std::move(line));
+                }
+            }
+            long pos = std::ftell(f);
+            if (pos >= 0) {
+                offset = pos;
+            }
+        }
+    }
+
+    std::fclose(f);
+}
+
+static void syncRawDebugFeed()
+{
+    auto& state = rawDebugState();
+    refreshTail("log.txt", "[app] ", state.appOffset, state.lines);
+    refreshTail("cellscope_lte.log", "[lte] ", state.lteOffset, state.lines);
+    refreshTail("cellscope_raw.log", "[raw] ", state.rawOffset, state.lines);
+    while (state.lines.size() > 2000) {
+        state.lines.pop_front();
+    }
+}
+
+static void advanceTailToEnd(const char* path, long& offset)
+{
+    FILE* f = std::fopen(path, "rb");
+    if (!f) {
+        offset = 0;
+        return;
+    }
+    if (std::fseek(f, 0, SEEK_END) == 0) {
+        long pos = std::ftell(f);
+        if (pos >= 0) {
+            offset = pos;
+        }
+    }
+    std::fclose(f);
+}
+
+static void clearRawDebugFeed()
+{
+    auto& state = rawDebugState();
+    state.lines.clear();
+    advanceTailToEnd("log.txt", state.appOffset);
+    advanceTailToEnd("cellscope_lte.log", state.lteOffset);
+    advanceTailToEnd("cellscope_raw.log", state.rawOffset);
+}
+#endif
+} // namespace
+
 // Kick off source startup. Most backends open instantly, but LibreSDR/UHD
 // blocks for several seconds in multi_usrp::make() (firmware + FPGA upload), so
 // open the device on a worker thread (prepare()) and surface an animated
@@ -166,7 +258,7 @@ void drawControls(App& app)
     }
 
     // Version + update banner.
-    ImGui::TextDisabled("CellScope v" CELLSCOPE_VERSION);
+    ImGui::TextDisabled("LTEScope v" CELLSCOPE_VERSION);
     {
         VersionCheck::State st = app.verCheck.state();
         if (st == VersionCheck::UpdateAvailable)
@@ -615,7 +707,7 @@ void drawControls(App& app)
         if (ImGui::InputDouble("Center A (MHz)", &app.centerFreqMHz, 0.1, 1.0, "%.4f"))
             app.viewA.resetView = true;
         ImGui::Combo("Rate A (MHz)", &app.sampleRateIdx, kRateLabels, kNumRates);
-        if (ImGui::Checkbox("Auto gain A", &app.autoGain)) {}
+        ImGui::Checkbox("Auto gain A", &app.autoGain);
         if (!app.autoGain)
             ImGui::SliderFloat("Gain A (dB)", &app.gainDb, 0.0f, 50.0f, "%.1f");
         ImGui::Checkbox("Bias-T A", &app.biasTee);
@@ -644,7 +736,7 @@ void drawControls(App& app)
         if (ImGui::InputDouble("Center B (MHz)", &app.centerFreqMHzB, 0.1, 1.0, "%.4f"))
             app.viewB.resetView = true;
         ImGui::Combo("Rate B (MHz)", &app.sampleRateIdxB, kRateLabels, kNumRates);
-        if (ImGui::Checkbox("Auto gain B", &app.autoGainB)) {}
+        ImGui::Checkbox("Auto gain B", &app.autoGainB);
         if (!app.autoGainB)
             ImGui::SliderFloat("Gain B (dB)", &app.gainDbB, 0.0f, 50.0f, "%.1f");
         ImGui::Checkbox("Bias-T B", &app.biasTeeB);
@@ -676,7 +768,7 @@ void drawControls(App& app)
         ImGui::TextDisabled("  (WAV: tuning is fixed to the file)");
 
     // Band plan bar along bottom of spectrum
-    if (ImGui::Checkbox(_L("Band Plan"), &app.showBandPlan));
+    ImGui::Checkbox(_L("Band Plan"), &app.showBandPlan);
     if (app.showBandPlan)
     {
         ImGui::SameLine();
@@ -714,7 +806,7 @@ void drawControls(App& app)
 
     if (app.dualMode)
     {
-        if (ImGui::Checkbox(_L("Band Plan (B)"), &app.showBandPlanB));
+        ImGui::Checkbox(_L("Band Plan (B)"), &app.showBandPlanB);
         if (app.showBandPlanB && !app.bandPlanNames.empty())
         {
             if (app.bandPlanIdxB >= (int)app.bandPlanNames.size())
@@ -1385,13 +1477,13 @@ void drawAbout(App& app)
 
     ImGui::SetNextWindowSize(ImVec2(420, 340), ImGuiCond_Appearing);
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::Begin((std::string(_L("About CellScope")) + "###About CellScope").c_str(), &app.showAbout,
+    if (ImGui::Begin((std::string(_L("About LTEScope")) + "###About LTEScope").c_str(), &app.showAbout,
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDocking |
                      ImGuiWindowFlags_NoCollapse))
     {
-        ImGui::TextWrapped("CellScope v" CELLSCOPE_VERSION);
+        ImGui::TextWrapped("LTEScope v" CELLSCOPE_VERSION);
         ImGui::Separator();
-        ImGui::TextWrapped("CellScope was created by Sarah Rose.");
+        ImGui::TextWrapped("LTEScope was created by Sarah Rose.");
         ImGui::Spacing();
         ImGui::TextWrapped("Built with components from:");
         ImGui::TextDisabled("  JAERO (Jontio)");
@@ -1412,6 +1504,44 @@ static void lteFmtRate(double bps, char* out, size_t n)
     if (bps >= 1e6)      std::snprintf(out, n, "%.2f Mbps", bps / 1e6);
     else if (bps >= 1e3) std::snprintf(out, n, "%.1f kbps", bps / 1e3);
     else                 std::snprintf(out, n, "%.0f bps", bps);
+}
+
+void drawRawDebug(App& app)
+{
+    if (!app.showRawDebug) {
+        return;
+    }
+
+    ImGui::Begin((std::string("Raw Debug") + "###RawDebug").c_str());
+
+    auto& state = rawDebugState();
+    syncRawDebugFeed();
+
+    ImGui::TextDisabled("Live tail of log.txt, cellscope_lte.log, and cellscope_raw.log");
+    ImGui::SetNextItemWidth(220);
+    ImGui::InputTextWithHint("##rawfilter", "filter text...", state.filter, sizeof(state.filter));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear")) {
+        clearRawDebugFeed();
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("Auto-scroll", &state.autoScroll);
+    ImGui::Separator();
+
+    if (ImGui::BeginChild("raw_debug_child", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar)) {
+        for (auto& line : state.lines) {
+            if (state.filter[0] != '\0' && line.find(state.filter) == std::string::npos) {
+                continue;
+            }
+            ImGui::TextUnformatted(line.c_str());
+        }
+        if (state.autoScroll) {
+            ImGui::SetScrollHereY(1.0f);
+        }
+    }
+    ImGui::EndChild();
+
+    ImGui::End();
 }
 
 // "LTE" panel: controls, state, cell info, DL-throughput chart, connection feed.
@@ -1867,6 +1997,7 @@ void drawDockHost(App& app)
                 app.forceDefaultLayout = true;
 #ifdef HAS_LTE
             ImGui::MenuItem(_L("LTE"), nullptr, &app.showLte);
+            ImGui::MenuItem(_L("Raw Debug"), nullptr, &app.showRawDebug);
 #endif
             ImGui::EndMenu();
         }
@@ -1881,4 +2012,3 @@ void drawDockHost(App& app)
 
     ImGui::End();
 }
-

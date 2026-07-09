@@ -1,10 +1,39 @@
 #include "sdr/hackrf_source.h"
 
+#if defined(HAS_HACKRF_LIB)
 #include <libhackrf/hackrf.h>
+#endif
 
 #include <cmath>
 #include <mutex>
 #include <string>
+
+#if !defined(HAS_HACKRF_LIB)
+
+HackRfSource::~HackRfSource() = default;
+
+std::vector<SdrDeviceInfo> HackRfSource::listDevices()
+{
+    return {};
+}
+
+bool HackRfSource::start(int, SdrSampleCb, std::string& err)
+{
+    err = "HackRF support is not available in this build";
+    return false;
+}
+
+void HackRfSource::stop() {}
+int HackRfSource::handleRx(const int8_t*, int) { return 0; }
+void HackRfSource::setCenterFreq(double hz) { centerFreq_ = hz; }
+void HackRfSource::setSampleRate(double hz) { sampleRate_ = hz; }
+void HackRfSource::setGain(double db) { setVgaGain((int)std::lround(db)); }
+void HackRfSource::setBiasTee(bool on) { biasTee_ = on; }
+void HackRfSource::setLnaGain(int db) { lnaGain_ = db; }
+void HackRfSource::setVgaGain(int db) { vgaGain_ = db; }
+void HackRfSource::setAmpEnable(bool on) { amp_ = on; }
+
+#else
 
 namespace {
 // libhackrf needs a single global init. Init once on first use; we don't call
@@ -214,3 +243,5 @@ void HackRfSource::setBiasTee(bool on)
     if (dev_)
         hackrf_set_antenna_enable(dev_, on ? 1 : 0);
 }
+
+#endif

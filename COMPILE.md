@@ -1,6 +1,6 @@
-# Building CellScope on Windows
+# Building LTEScope on Windows
 
-CellScope is built with the **MSYS2 / MinGW-w64** toolchain (GCC 15.x) using
+LTEScope is built with the **MSYS2 / MinGW-w64** toolchain (GCC 15.x) using
 **CMake** and **Ninja**. The build is reproducible from a clean MSYS2 install.
 
 > Important: GCC must be invoked from inside the **MINGW64** environment. If you
@@ -52,7 +52,7 @@ separate install.
 ### LTE stack (srsRAN / FALCON / LTESniffer)
 
 The LTE eavesdropper stack is vendored and built as static libraries, wired into
-CellScope behind the `HAS_LTE` CMake option (ON by default). To build without it:
+LTEScope behind the `HAS_LTE` CMake option (ON by default). To build without it:
 
 ```bash
 cmake -S . -B build -G Ninja -DHAS_LTE=OFF
@@ -61,6 +61,8 @@ cmake -S . -B build -G Ninja -DHAS_LTE=OFF
 All srsRAN/FALCON/LTESniffer sources compile with MinGW-specific compatibility
 shims kept in `third_party/lte/compat/`. Only downlink decoding is supported on
 RTL-SDR/HackRF/Airspy; uplink sniffing needs USRP-class hardware.
+On macOS, LTEScope uses a direct srsRAN-only LTE backend and skips the
+Falcon/LTESniffer chain.
 
 ### Optional: Airspy support
 
@@ -83,7 +85,7 @@ ninja -C build
 The executable and the runtime DLLs it needs are placed in `build/`:
 
 ```
-build/CellScope.exe
+build/LTEScope.exe
 build/libgcc_s_seh-1.dll, libwinpthread-1.dll, libstdc++-6.dll,
       glfw3.dll, librtlsdr.dll, libhackrf.dll, libusb-1.0.dll,
       libzstd.dll, zlib1.dll, libogg-0.dll, libvorbis-0.dll,
@@ -97,8 +99,32 @@ runs standalone from a double-click or from PyCharm without MSYS2 on `PATH`.
 Run it:
 
 ```bash
-./build/CellScope.exe
+./build/LTEScope.exe
 ```
+
+## macOS
+
+LTEScope now configures as a native desktop app on macOS as long as you provide
+the desktop dependencies, most importantly `glfw` and `zstd`.
+
+If GLFW is not installed locally, CMake will fetch GLFW 3.4 from the release
+archive you provided and build it from source.
+
+If the local checkout is missing the ImGui or ImPlot vendor trees, CMake will
+fetch those from upstream automatically as well.
+
+Suggested Homebrew setup:
+
+```bash
+brew install glfw zstd fftw
+```
+
+The optional RTL-SDR and HackRF backends are now compiled defensively: if the
+libraries are missing, the app still builds and the corresponding sources just
+report that hardware support is unavailable.
+
+The LTE stack on macOS uses the direct srsRAN backend. Falcon/LTESniffer is
+not part of the macOS build path for now.
 
 ## 4. Building from PowerShell (optional)
 
@@ -108,7 +134,7 @@ environment first. For example:
 ```powershell
 $env:MSYSTEM = "MINGW64"
 $env:CHERE_INVOKING = "1"
-& C:\msys64\usr\bin\bash.exe -lc "cd /c/path/to/CellScope && ninja -C build"
+& C:\msys64\usr\bin\bash.exe -lc "cd /c/path/to/LTEScope && ninja -C build"
 ```
 
 The `-l` (login) shell with `MSYSTEM=MINGW64` sources `/etc/profile`, which puts
@@ -123,11 +149,18 @@ keeps the current directory.
   builds in about a minute. This is intentional, not a hang.
 - **`cc1plus` exits 1 with no output.** You are not in the MINGW64 environment.
   Build from the MSYS2 MINGW64 shell (see the warning above).
-- **Link fails with "Access is denied" on `CellScope.exe`.** A previous instance
+- **Link fails with "Access is denied" on `LTEScope.exe`.** A previous instance
   is still running and is locking the file. Close it, then rebuild.
 - **Incremental builds.** Re-run `ninja -C build`. Only changed files recompile.
   After editing `CMakeLists.txt`, re-run `cmake -S . -B build` first.
 - **Clean rebuild.** Delete the `build/` directory and re-run the configure +
   build steps. (Avoid `--clean-first`; it wipes the vendored objects and forces
   the slow `implot_items.cpp` recompile.)
+
+## Emscripten
+
+Emscripten is not a supported build target yet. The current application still
+assumes desktop windowing, threading, file I/O, and SDR hardware backends, so a
+browser build would need a separate UI-only path or playback mode rather than a
+straight recompile.
 ```

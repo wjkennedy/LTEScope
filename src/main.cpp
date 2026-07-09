@@ -1,4 +1,4 @@
-// CellScope - Inmarsat decoder
+// LTEScope - Inmarsat decoder
 // Phase 1: RTL-SDR -> IQ ring -> FFT -> spectrum + scrolling waterfall.
 
 #include "imgui.h"
@@ -59,6 +59,15 @@ bool openWavDialog(char* out, int outLen)
 bool openWavDialog(char*, int) { return false; }
 #endif
 
+#if !defined(_WIN32)
+static void capture_stderr_to_file()
+{
+    if (std::freopen("cellscope_raw.log", "a", stderr)) {
+        std::setvbuf(stderr, nullptr, _IONBF, 0);
+    }
+}
+#endif
+
 static void glfw_error_callback(int error, const char* description)
 {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
@@ -70,15 +79,26 @@ static void glfw_error_callback(int error, const char* description)
 
 int main(int, char**)
 {
+#if !defined(_WIN32)
+    capture_stderr_to_file();
+#endif
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return 1;
 
+#if defined(__APPLE__)
+    const char* glsl_version = "#version 150";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#else
     const char* glsl_version = "#version 130";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+#endif
 
-    GLFWwindow* window = glfwCreateWindow(1400, 900, "CellScope", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1400, 900, "LTEScope", nullptr, nullptr);
     if (!window)
     {
         glfwTerminate();
@@ -139,7 +159,7 @@ int main(int, char**)
     buildWindow(app.viewA, kFftSizes[app.fftSizeIdx], app.dbMin);
     buildWindow(app.viewB, kFftSizes[app.fftSizeIdx], app.dbMin);
     app.devices = app.sdr.listDevices();
-    app.verCheck.start("cellscope", CELLSCOPE_VERSION);
+    app.verCheck.start("ltescope", CELLSCOPE_VERSION);
     scanBandPlans(app.bandPlanDir, app.bandPlanNames, app.bandPlanPaths);
     if (app.bandPlanIdx >= 0 && app.bandPlanIdx < (int)app.bandPlanPaths.size())
         app.bandPlanLoaded = loadBandPlan(app.bandPlanPaths[app.bandPlanIdx]);
@@ -227,6 +247,7 @@ int main(int, char**)
         drawLteUes(app);
         drawLteTraffic(app);
         drawLteCalls(app);
+        drawRawDebug(app);
 #endif
 
         int display_w, display_h;

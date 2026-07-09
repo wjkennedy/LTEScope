@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(CellScope C CXX)
+project(LTEScope C CXX)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
@@ -9,36 +9,95 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "" FORCE)
 endif()
 
+if(APPLE OR EMSCRIPTEN)
+    set(CELLSCOPE_LTE_DEFAULT OFF)
+else()
+    set(CELLSCOPE_LTE_DEFAULT ON)
+endif()
+
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
 find_package(OpenGL REQUIRED)
 find_package(PkgConfig)
+include(FetchContent)
 
+set(GLFW_FOUND FALSE)
 find_package(glfw3 CONFIG QUIET)
-if(NOT glfw3_FOUND)
-    if(NOT PkgConfig_FOUND)
-        find_package(PkgConfig REQUIRED)
+if(glfw3_FOUND)
+    set(GLFW_FOUND TRUE)
+elseif(PkgConfig_FOUND)
+    pkg_check_modules(GLFW QUIET glfw3)
+    if(GLFW_FOUND)
+        set(GLFW_FOUND TRUE)
     endif()
-    pkg_check_modules(GLFW REQUIRED glfw3)
+endif()
+if(NOT GLFW_FOUND)
+    find_path(GLFW_INCLUDE_DIRS NAMES GLFW/glfw3.h
+        PATHS /opt/homebrew/opt/glfw /usr/local/opt/glfw /opt/local)
+    find_library(GLFW_LIBRARIES NAMES glfw3 glfw
+        PATHS /opt/homebrew/opt/glfw/lib /usr/local/opt/glfw/lib /opt/local/lib)
+    if(GLFW_INCLUDE_DIRS AND GLFW_LIBRARIES)
+        set(GLFW_FOUND TRUE)
+    endif()
+endif()
+if(NOT GLFW_FOUND)
+    message(STATUS "GLFW package not found; fetching glfw 3.4 from source archive")
+    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(glfw
+        URL https://github.com/glfw/glfw/releases/download/3.4/glfw-3.4.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(glfw)
+    set(GLFW_FOUND TRUE)
 endif()
 
 # RTL-SDR
+set(HAS_RTLSDR_LIB FALSE)
 if(PkgConfig_FOUND)
-    pkg_check_modules(RTLSDR QUIET librtlsdr)
+    pkg_check_modules(RTLSDR QUIET librtlsdr rtl-sdr)
 endif()
-if(NOT RTLSDR_FOUND)
-    find_library(RTLSDR_LIBRARIES NAMES rtlsdr librtlsdr REQUIRED)
-    find_path(RTLSDR_INCLUDE_DIRS NAMES rtl-sdr.h REQUIRED)
+if(RTLSDR_FOUND)
+    set(HAS_RTLSDR_LIB TRUE)
+elseif(NOT EMSCRIPTEN)
+    find_library(RTLSDR_LIBRARIES NAMES rtlsdr librtlsdr
+        PATHS /opt/homebrew/opt/librtlsdr/lib /usr/local/opt/librtlsdr/lib /opt/local/lib)
+    find_path(RTLSDR_INCLUDE_DIRS NAMES rtl-sdr.h
+        PATHS /opt/homebrew/opt/librtlsdr/include /usr/local/opt/librtlsdr/include /opt/local/include)
+    if(RTLSDR_LIBRARIES AND RTLSDR_INCLUDE_DIRS)
+        set(HAS_RTLSDR_LIB TRUE)
+    endif()
+endif()
+if(NOT HAS_RTLSDR_LIB)
+    set(RTLSDR_LIBRARIES "")
+    set(RTLSDR_INCLUDE_DIRS "")
+    message(STATUS "RTL-SDR support disabled: librtlsdr not found")
+else()
+    message(STATUS "RTL-SDR support enabled: ${RTLSDR_LIBRARIES}")
 endif()
 
 # HackRF (native source). The MSYS2 libhackrf.pc has a hardcoded build-machine
 # libusb include path, so locate the header/library directly instead of via
 # pkg-config. hackrf.h itself doesn't pull in libusb, so no extra include is
 # needed for our wrapper.
+set(HAS_HACKRF_LIB FALSE)
 find_path(HACKRF_INCLUDE_DIRS NAMES libhackrf/hackrf.h hackrf.h
-          PATH_SUFFIXES libhackrf REQUIRED)
-find_library(HACKRF_LIBRARIES NAMES hackrf libhackrf REQUIRED)
+          PATH_SUFFIXES libhackrf
+          PATHS /opt/homebrew/opt/hackrf/include /usr/local/opt/hackrf/include /opt/local/include)
+find_library(HACKRF_LIBRARIES NAMES hackrf libhackrf
+              PATHS /opt/homebrew/opt/hackrf/lib /usr/local/opt/hackrf/lib /opt/local/lib)
+if(HACKRF_INCLUDE_DIRS AND HACKRF_LIBRARIES)
+    set(HAS_HACKRF_LIB TRUE)
+endif()
+if(HAS_HACKRF_LIB)
+    message(STATUS "HackRF support enabled: ${HACKRF_LIBRARIES}")
+else()
+    set(HACKRF_INCLUDE_DIRS "")
+    set(HACKRF_LIBRARIES "")
+    message(STATUS "HackRF support disabled: libhackrf not found")
+endif()
 
 # Airspy (native source, optional).
 # Vendored headers always available; library detection is optional.
@@ -70,15 +129,34 @@ if(NOT WIN32)
     endif()
 endif()
 
-set(IMGUI_DIR   ${CMAKE_SOURCE_DIR}/third_party/imgui)
-set(IMPLOT_DIR  ${CMAKE_SOURCE_DIR}/third_party/implot)
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/imgui/imgui.cpp")
+    set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
+else()
+    message(STATUS "ImGui sources not found; fetching upstream docking branch")
+    FetchContent_Declare(imgui
+        URL https://github.com/ocornut/imgui/archive/refs/heads/docking.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(imgui)
+    set(IMGUI_DIR ${imgui_SOURCE_DIR})
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/implot/implot.cpp")
+    set(IMPLOT_DIR ${CMAKE_SOURCE_DIR}/third_party/implot)
+else()
+    message(STATUS "ImPlot sources not found; fetching upstream master branch")
+    FetchContent_Declare(implot
+        URL https://github.com/epezent/implot/archive/refs/heads/master.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(implot)
+    set(IMPLOT_DIR ${implot_SOURCE_DIR})
+endif()
 
 # ---------------------------------------------------------------------------
 # LTE stack (srsRAN2 + FALCON + LTESniffer), vendored under third_party/lte.
-# Enabled by default; builds the decode libraries + the CellScope LTE engine
+# Enabled by default; builds the decode libraries + the LTEScope LTE engine
 # bridge (exposed via the cellscope_lte aggregate target).
 # ---------------------------------------------------------------------------
-option(HAS_LTE "Build the vendored LTE (srsRAN/FALCON/LTESniffer) stack" ON)
+option(HAS_LTE "Build the vendored LTE (srsRAN/FALCON/LTESniffer) stack" ${CELLSCOPE_LTE_DEFAULT})
 if(HAS_LTE)
     add_subdirectory(third_party/lte)
 endif()
@@ -106,8 +184,11 @@ target_include_directories(imgui PUBLIC
 # It is not performance-critical for us, so build it at -O1 (~1 min). The last
 # -O flag wins in GCC, so this overrides the RelWithDebInfo -O2.
 set_source_files_properties(${IMPLOT_DIR}/implot_items.cpp PROPERTIES COMPILE_OPTIONS "-O1")
+if(APPLE)
+    target_compile_definitions(imgui PUBLIC GL_SILENCE_DEPRECATION)
+endif()
 target_link_libraries(imgui PUBLIC OpenGL::GL)
-if(glfw3_FOUND)
+if(TARGET glfw)
     target_link_libraries(imgui PUBLIC glfw)
 else()
     target_include_directories(imgui PUBLIC ${GLFW_INCLUDE_DIRS})
@@ -116,9 +197,9 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# CellScope application
+# LTEScope application
 # ---------------------------------------------------------------------------
-add_executable(CellScope
+add_executable(LTEScope
     src/main.cpp
     src/signal/processing.cpp
     src/voice/voice_ops.cpp
@@ -142,49 +223,75 @@ add_executable(CellScope
     src/i18n/i18n.cpp
     src/update/version_check.cpp
 )
-target_include_directories(CellScope PRIVATE
+target_include_directories(LTEScope PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${RTLSDR_INCLUDE_DIRS}
     ${HACKRF_INCLUDE_DIRS}
 )
-target_compile_definitions(CellScope PRIVATE _USE_MATH_DEFINES)
+target_compile_definitions(LTEScope PRIVATE _USE_MATH_DEFINES)
+if(APPLE)
+    target_compile_definitions(LTEScope PRIVATE GL_SILENCE_DEPRECATION)
+    target_link_libraries(LTEScope PRIVATE
+        /opt/homebrew/opt/llvm/lib/c++/libc++.dylib
+        /opt/homebrew/opt/llvm/lib/c++/libc++abi.dylib)
+endif()
+if(HAS_RTLSDR_LIB)
+    target_compile_definitions(LTEScope PRIVATE HAS_RTLSDR_LIB=1)
+    target_link_directories(LTEScope PRIVATE ${RTLSDR_LIBRARY_DIRS})
+    target_link_libraries(LTEScope PRIVATE ${RTLSDR_LIBRARIES})
+endif()
+if(HAS_HACKRF_LIB)
+    target_compile_definitions(LTEScope PRIVATE HAS_HACKRF_LIB=1)
+endif()
 if(AIRSPY_FOUND)
-    target_sources(CellScope PRIVATE src/sdr/airspy_source.cpp)
-    target_compile_definitions(CellScope PRIVATE HAS_AIRSPY=1)
-    target_include_directories(CellScope PRIVATE ${AIRSPY_INCLUDE_DIRS})
+    target_sources(LTEScope PRIVATE src/sdr/airspy_source.cpp)
+    target_compile_definitions(LTEScope PRIVATE HAS_AIRSPY=1)
+    target_include_directories(LTEScope PRIVATE ${AIRSPY_INCLUDE_DIRS})
 endif()
 if(LIBRESDR_FOUND)
-    target_sources(CellScope PRIVATE src/sdr/libresdr_source.cpp)
-    target_compile_definitions(CellScope PRIVATE HAS_LIBRESDR=1)
-    target_include_directories(CellScope PRIVATE ${UHD_INCLUDE_DIRS})
-    target_link_directories(CellScope PRIVATE ${UHD_LIBRARY_DIRS})
+    target_sources(LTEScope PRIVATE src/sdr/libresdr_source.cpp)
+    target_compile_definitions(LTEScope PRIVATE HAS_LIBRESDR=1)
+    target_include_directories(LTEScope PRIVATE ${UHD_INCLUDE_DIRS})
+    target_link_directories(LTEScope PRIVATE ${UHD_LIBRARY_DIRS})
 endif()
-find_library(ZSTD_LIBRARIES NAMES zstd libzstd REQUIRED)
+find_library(ZSTD_LIBRARIES NAMES zstd libzstd
+    PATHS /opt/homebrew/opt/zstd/lib /usr/local/opt/zstd/lib /opt/local/lib
+    REQUIRED)
 find_library(ZLIB_LIB NAMES z libz zlib REQUIRED)
 
-target_link_libraries(CellScope PRIVATE imgui ${ZLIB_LIB} ${RTLSDR_LIBRARIES} ${HACKRF_LIBRARIES} ${ZSTD_LIBRARIES})
+find_path(ZSTD_INCLUDE_DIRS NAMES zstd.h
+    PATHS /opt/homebrew/opt/zstd/include /usr/local/opt/zstd/include /opt/local/include
+    REQUIRED)
+target_include_directories(LTEScope PRIVATE ${ZSTD_INCLUDE_DIRS})
+target_link_libraries(LTEScope PRIVATE imgui ${ZLIB_LIB} ${ZSTD_LIBRARIES})
+if(HAS_RTLSDR_LIB)
+    target_link_libraries(LTEScope PRIVATE ${RTLSDR_LIBRARIES})
+endif()
+if(HAS_HACKRF_LIB)
+    target_include_directories(LTEScope PRIVATE ${HACKRF_INCLUDE_DIRS})
+    target_link_libraries(LTEScope PRIVATE ${HACKRF_LIBRARIES})
+endif()
 if(AIRSPY_FOUND)
-    target_link_libraries(CellScope PRIVATE ${AIRSPY_LIBRARIES})
+    target_link_libraries(LTEScope PRIVATE ${AIRSPY_LIBRARIES})
 endif()
 if(LIBRESDR_FOUND)
-    target_link_libraries(CellScope PRIVATE ${UHD_LIBRARIES})
+    target_link_libraries(LTEScope PRIVATE ${UHD_LIBRARIES})
 endif()
 if(HAS_LTE)
-    target_link_libraries(CellScope PRIVATE cellscope_lte)
-    target_compile_definitions(CellScope PRIVATE HAS_LTE=1)
-    target_sources(CellScope PRIVATE src/lte/lte_diag.cpp)
+    target_link_libraries(LTEScope PRIVATE cellscope_lte)
+    target_compile_definitions(LTEScope PRIVATE HAS_LTE=1)
+    target_sources(LTEScope PRIVATE src/lte/lte_diag.cpp)
     if(WIN32)
-        target_link_libraries(CellScope PRIVATE dbghelp psapi)
+        target_link_libraries(LTEScope PRIVATE dbghelp psapi)
     endif()
 endif()
-target_link_directories(CellScope PRIVATE ${RTLSDR_LIBRARY_DIRS})
 
 if(WIN32)
-    target_link_libraries(CellScope PRIVATE opengl32 gdi32 comdlg32 ole32 winmm ws2_32 winhttp shell32)
+    target_link_libraries(LTEScope PRIVATE opengl32 gdi32 comdlg32 ole32 winmm ws2_32 winhttp shell32)
 
     # Build as a GUI-subsystem app so no console window opens alongside the GUI.
     # MinGW provides a WinMain shim, so the existing int main() still works.
-    set_target_properties(CellScope PROPERTIES WIN32_EXECUTABLE TRUE)
+    set_target_properties(LTEScope PROPERTIES WIN32_EXECUTABLE TRUE)
 
     # Embed the application icon (icon.ico in the project root). Windows and
     # GLFW both pick up the first icon resource for the exe and window.
@@ -192,7 +299,7 @@ if(WIN32)
         enable_language(RC)
         set(FRAMESYNC_ICON "${CMAKE_SOURCE_DIR}/icon.ico")
         configure_file("${CMAKE_SOURCE_DIR}/app.rc.in" "${CMAKE_BINARY_DIR}/app.rc" @ONLY)
-        target_sources(CellScope PRIVATE "${CMAKE_BINARY_DIR}/app.rc")
+        target_sources(LTEScope PRIVATE "${CMAKE_BINARY_DIR}/app.rc")
     endif()
 
     # Copy MinGW runtime DLLs next to the executable so it runs standalone
@@ -217,9 +324,9 @@ if(WIN32)
     endif()
     foreach(dll ${FRAMESYNC_RUNTIME_DLLS})
         if(EXISTS "${MINGW_BIN}/${dll}")
-            add_custom_command(TARGET CellScope POST_BUILD
+            add_custom_command(TARGET LTEScope POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        "${MINGW_BIN}/${dll}" "$<TARGET_FILE_DIR:CellScope>"
+                        "${MINGW_BIN}/${dll}" "$<TARGET_FILE_DIR:LTEScope>"
                 COMMENT "Copying ${dll}")
         else()
             message(WARNING "Runtime DLL not found: ${MINGW_BIN}/${dll}")

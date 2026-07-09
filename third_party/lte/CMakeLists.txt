@@ -26,8 +26,30 @@ set(SRSRAN_DIR "${CS_ROOT}/srsran")
 set(FALCON_DIR "${CS_ROOT}/falcon")
 set(LTESNIFFER_DIR "${CS_ROOT}/ltesniffer")
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFTW3F REQUIRED fftw3f)
+find_package(PkgConfig QUIET)
+set(FFTW3F_FOUND FALSE)
+if(PkgConfig_FOUND)
+  pkg_check_modules(FFTW3F QUIET fftw3f)
+  if(FFTW3F_FOUND)
+    set(FFTW3F_FOUND TRUE)
+    if(DEFINED pkgcfg_lib_FFTW3F_fftw3f AND EXISTS "${pkgcfg_lib_FFTW3F_fftw3f}")
+      set(FFTW3F_LIBRARIES "${pkgcfg_lib_FFTW3F_fftw3f}")
+    endif()
+  endif()
+endif()
+if(NOT FFTW3F_FOUND)
+  find_path(FFTW3F_INCLUDE_DIRS NAMES fftw3.h
+    PATHS /opt/homebrew/opt/fftw/include /usr/local/opt/fftw/include /opt/local/include)
+  find_library(FFTW3F_LIBRARIES NAMES fftw3f libfftw3f
+    PATHS /opt/homebrew/opt/fftw/lib /usr/local/opt/fftw/lib /opt/local/lib)
+  if(FFTW3F_INCLUDE_DIRS AND FFTW3F_LIBRARIES)
+    set(FFTW3F_FOUND TRUE)
+  endif()
+endif()
+if(NOT FFTW3F_FOUND)
+  message(FATAL_ERROR
+    "FFTW3F is required for the LTE stack. Install fftw or provide a pkg-config/CMake package.")
+endif()
 
 # NOTE: every setting below is directory-scoped — it applies only to the
 # vendored LTE libraries, never to CellScope's own application code.
@@ -86,33 +108,9 @@ target_include_directories(srsran_phy PUBLIC
   ${CS_COMPAT_INC}
   ${FFTW3F_INCLUDE_DIRS})
 target_link_libraries(srsran_phy PUBLIC ${FFTW3F_LIBRARIES} ${CS_PTHREAD_LIB} m)
-target_compile_options(srsran_phy PRIVATE -march=native)
-
-# ---------------------------------------------------------------------------
-# falcon_phy (FALCON PHY + UE + util + prof + common)
-# ---------------------------------------------------------------------------
-file(GLOB_RECURSE FALCON_SRCS
-  "${FALCON_DIR}/src/phy/falcon_phch/*.c"
-  "${FALCON_DIR}/src/phy/falcon_phch/*.cc"
-  "${FALCON_DIR}/src/phy/falcon_ue/*.c"
-  "${FALCON_DIR}/src/util/*.c"
-  "${FALCON_DIR}/src/util/*.cc"
-  "${FALCON_DIR}/src/prof/*.cc"
-  "${FALCON_DIR}/src/common/*.cc")
-list(FILTER FALCON_SRCS EXCLUDE REGEX "\\.orig$")
-# DCIFormats.cc includes a header that does not ship and its body is fully
-# commented-out legacy srslte_* code -> dead translation unit.
-list(FILTER FALCON_SRCS EXCLUDE REGEX "DCIFormats")
-# SignalManager.cc is LTESniffer's CTRL+C handler (POSIX signals); unused here.
-list(FILTER FALCON_SRCS EXCLUDE REGEX "SignalManager")
-
-add_library(falcon_phy STATIC ${FALCON_SRCS})
-target_include_directories(falcon_phy PUBLIC
-  "${FALCON_DIR}/include"
-  "${SRSRAN_DIR}/include"
-  ${FFTW3F_INCLUDE_DIRS})
-target_link_libraries(falcon_phy PUBLIC srsran_phy)
-target_compile_options(falcon_phy PRIVATE -march=native)
+if(NOT EMSCRIPTEN)
+  target_compile_options(srsran_phy PRIVATE -march=native)
+endif()
 
 # ---------------------------------------------------------------------------
 # srslog (srsRAN logging framework; self-contained C++)
@@ -190,33 +188,71 @@ target_link_libraries(rrc_asn1 PUBLIC asn1_utils srsran_common)
 target_compile_options(rrc_asn1 PRIVATE -Os ${ASN1_WARN_FLAGS})
 
 # ---------------------------------------------------------------------------
-# ltesniffer decode core (downlink subset). Excludes uplink (UL_Sniffer_PUSCH,
-# ULSchedule), the CLI (ArgManager) and the RF/threading orchestrator
-# (LTESniffer_Core, which pulls in srsue/hdr/ue.h). CellScope drives it.
+# Falcon + LTESniffer backend. Skip entirely on macOS/Emscripten so the
+# app can use a plain srsRAN-based LTE engine there.
 # ---------------------------------------------------------------------------
-file(GLOB LTESNIFFER_SRCS "${LTESNIFFER_DIR}/src/*.cc" "${LTESNIFFER_DIR}/src/*.c")
-list(FILTER LTESNIFFER_SRCS EXCLUDE REGEX "(UL_Sniffer_PUSCH|ArgManager|LTESniffer_Core)")
-add_library(ltesniffer_core STATIC ${LTESNIFFER_SRCS})
-target_include_directories(ltesniffer_core PUBLIC
-  "${LTESNIFFER_DIR}/include"
-  "${LTESNIFFER_DIR}"
-  "${FALCON_DIR}/include"
-  "${SRSRAN_DIR}/include"
-  ${FFTW3F_INCLUDE_DIRS})
-target_link_libraries(ltesniffer_core PUBLIC
-  falcon_phy srsran_phy srsran_mac srsran_common rrc_asn1 srsran_asn1 asn1_utils srslog)
-target_compile_options(ltesniffer_core PRIVATE -march=native)
+if(NOT APPLE AND NOT EMSCRIPTEN)
+  file(GLOB_RECURSE FALCON_SRCS
+    "${FALCON_DIR}/src/phy/falcon_phch/*.c"
+    "${FALCON_DIR}/src/phy/falcon_phch/*.cc"
+    "${FALCON_DIR}/src/phy/falcon_ue/*.c"
+    "${FALCON_DIR}/src/util/*.c"
+    "${FALCON_DIR}/src/util/*.cc"
+    "${FALCON_DIR}/src/prof/*.cc"
+    "${FALCON_DIR}/src/common/*.cc")
+  list(FILTER FALCON_SRCS EXCLUDE REGEX "\\.orig$")
+  # DCIFormats.cc includes a header that does not ship and its body is fully
+  # commented-out legacy srslte_* code -> dead translation unit.
+  list(FILTER FALCON_SRCS EXCLUDE REGEX "DCIFormats")
+  # SignalManager.cc is LTESniffer's CTRL+C handler (POSIX signals); unused here.
+  list(FILTER FALCON_SRCS EXCLUDE REGEX "SignalManager")
+
+  add_library(falcon_phy STATIC ${FALCON_SRCS})
+  target_include_directories(falcon_phy PUBLIC
+    "${FALCON_DIR}/include"
+    "${SRSRAN_DIR}/include"
+    ${FFTW3F_INCLUDE_DIRS})
+  target_link_libraries(falcon_phy PUBLIC srsran_phy)
+  if(NOT EMSCRIPTEN)
+    target_compile_options(falcon_phy PRIVATE -march=native)
+  endif()
+
+  file(GLOB LTESNIFFER_SRCS "${LTESNIFFER_DIR}/src/*.cc" "${LTESNIFFER_DIR}/src/*.c")
+  list(FILTER LTESNIFFER_SRCS EXCLUDE REGEX "(UL_Sniffer_PUSCH|ArgManager|LTESniffer_Core)")
+  add_library(ltesniffer_core STATIC ${LTESNIFFER_SRCS})
+  target_include_directories(ltesniffer_core PUBLIC
+    "${LTESNIFFER_DIR}/include"
+    "${LTESNIFFER_DIR}"
+    "${FALCON_DIR}/include"
+    "${SRSRAN_DIR}/include"
+    ${FFTW3F_INCLUDE_DIRS})
+  target_link_libraries(ltesniffer_core PUBLIC
+    falcon_phy srsran_phy srsran_mac srsran_common rrc_asn1 srsran_asn1 asn1_utils srslog)
+  if(NOT EMSCRIPTEN)
+    target_compile_options(ltesniffer_core PRIVATE -march=native)
+  endif()
+endif()
 
 # ---------------------------------------------------------------------------
-# CellScope LTE engine bridge. Compiled HERE (not in the CellScope target) so
-# it inherits the MinGW compat shims and C++14 while it includes srsRAN /
-# LTESniffer headers. It exposes only src/lte/lte_engine.h (STL/POD types) to
-# the rest of the application.
+# CellScope LTE engine bridge. Compiled HERE so the application only sees
+# STL/POD types, while the backend differs by platform.
 # ---------------------------------------------------------------------------
-add_library(cellscope_lte_engine STATIC "${CMAKE_SOURCE_DIR}/src/lte/lte_engine.cpp")
+if(APPLE OR EMSCRIPTEN)
+  set(CELLSCOPE_LTE_ENGINE_SRC "${CMAKE_SOURCE_DIR}/src/lte/lte_engine_srsran.cpp")
+else()
+  set(CELLSCOPE_LTE_ENGINE_SRC "${CMAKE_SOURCE_DIR}/src/lte/lte_engine.cpp")
+endif()
+
+add_library(cellscope_lte_engine STATIC "${CELLSCOPE_LTE_ENGINE_SRC}")
 target_include_directories(cellscope_lte_engine PUBLIC "${CMAKE_SOURCE_DIR}/src/lte")
-target_link_libraries(cellscope_lte_engine PUBLIC ltesniffer_core)
-target_compile_options(cellscope_lte_engine PRIVATE -march=native)
+if(APPLE OR EMSCRIPTEN)
+  target_link_libraries(cellscope_lte_engine PUBLIC srsran_phy srsran_common rrc_asn1 srsran_asn1 asn1_utils srslog)
+else()
+  target_link_libraries(cellscope_lte_engine PUBLIC ltesniffer_core)
+endif()
+if(NOT EMSCRIPTEN)
+  target_compile_options(cellscope_lte_engine PRIVATE -march=native)
+endif()
 
 # Aggregate target the main build links against.
 add_library(cellscope_lte INTERFACE)
@@ -226,7 +262,7 @@ target_include_directories(cellscope_lte INTERFACE "${CMAKE_SOURCE_DIR}/src/lte"
 # ---------------------------------------------------------------------------
 # Standalone Phase-0 gate harness (only when configured on its own).
 # ---------------------------------------------------------------------------
-if(CS_LTE_STANDALONE)
+if(CS_LTE_STANDALONE AND NOT APPLE AND NOT EMSCRIPTEN)
   add_executable(lte_spike "${CMAKE_CURRENT_SOURCE_DIR}/spike_main.cc")
   target_include_directories(lte_spike PRIVATE
     "${FALCON_DIR}/include" "${SRSRAN_DIR}/include"

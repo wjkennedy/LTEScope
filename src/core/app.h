@@ -153,6 +153,7 @@ struct App
     char   lteTrafficFilter[64] = "";   // filter Traffic by RNTI/text
     bool   lteTrafficWatchedOnly = false;
     bool   lteUeCallsOnly        = false; // show only UEs on a detected call
+    bool   showRawDebug         = false;  // raw LTE/Falcon/srsRAN log tail
 #endif
 
     std::vector<SdrDeviceInfo> devices;

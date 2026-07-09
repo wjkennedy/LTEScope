@@ -34,6 +34,8 @@
 #include "Phy.h"
 #include "PcapWriter.h"
 #include "HARQ.h"
+#include "srsran/phy/ue/ue_dl.h"
+#include "srsran/srsran.h"
 #include <ctime>
 #include <iostream>
 #include <boost/program_options.hpp>
@@ -44,21 +46,11 @@
 using namespace srsue;
 namespace bpo = boost::program_options;
 
-// include C-only headers
-#ifdef __cplusplus
-    extern "C" {
-#endif
-
 #include "srsran/phy/utils/debug.h"
 #include "falcon/phy/falcon_ue/falcon_ue_dl.h"
-#include "srsran/srsran.h"
 #include "srsran/phy/rf/rf.h"
 #include "srsran/phy/rf/rf_utils.h"
 
-#ifdef __cplusplus
-}
-#undef I // Fix complex.h #define I nastiness when using C++
-#endif
 using namespace srsran;
 
 #define UL_SNIFFER_UL_MAX_OFFSET 200

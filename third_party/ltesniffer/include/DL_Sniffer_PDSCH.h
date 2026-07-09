@@ -14,6 +14,8 @@
 #include "srsran/asn1/asn1_utils.h"
 #include "srsran/asn1/liblte_mme.h"
 #include "srsran/asn1/rrc/paging.h"
+#include "srsran/srsran.h"
+#include "srsran/phy/ue/ue_dl.h"
 // #include "srsran/asn1/rrc/dl_dcch_msg.h"
 
 // include C-only headers
@@ -217,4 +219,3 @@ private:
     /*Conver grant in rar*/
     srsran_pusch_hopping_cfg_t      hopping_cfg = {};
 };
-

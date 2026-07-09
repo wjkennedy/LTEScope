@@ -1,5 +1,8 @@
 #pragma once
 
+#include "srsran/phy/ue/ue_dl.h"
+#include "srsran/srsran.h"
+#include "srsran/phy/ue/ue_dl.h"
 #include "falcon/phy/falcon_ue/falcon_ue_dl.h"
 #include "include/SubframeInfo.h"
 #include "PhyCommon.h"

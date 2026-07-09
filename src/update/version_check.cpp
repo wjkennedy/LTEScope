@@ -88,7 +88,7 @@ void VersionCheck::run(std::string slug, std::string localVersion)
     std::wstring path = L"/api/version.php?slug=";
     for (char c : slug) path += (wchar_t)c;
 
-    HINTERNET hS = WinHttpOpen(L"CellScope",
+    HINTERNET hS = WinHttpOpen(L"LTEScope",
                                WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!hS) { fail("WinHttpOpen failed"); return; }
