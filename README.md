@@ -20,6 +20,8 @@ The build is CMake-based and uses Ninja.
 The browser build is the version that connects to the ESP32 boards over Web
 Serial. From the repository root:
 
+![screenshot1.png](screenshot1.png)
+
 ```bash
 ./scripts/start-web.sh
 ```
@@ -98,6 +100,8 @@ Then open `http://localhost:8000/LTEScope.html`. Web Serial requires a secure
 context, so `localhost` is fine. Chrome or Edge desktop is required.
 
 ### ESP32-S3 / LoRa firmware and browser flasher
+
+![screenshot2.png](screenshot2.png)
 
 The receive-only targets are Heltec WiFi LoRa 32 V3, LilyGO T-Display S3, and
 CYD-2432S028. T-Display uses continuous native-USB IQ; Heltec and CYD use
