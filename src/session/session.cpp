@@ -164,20 +164,18 @@ void startActive(App& app)
         ok = app.libre.start(app.deviceIndex, cb, err);
     }
 #endif
-#ifdef __EMSCRIPTEN__
     else if (app.sourceMode == 7)
     {
-        static const double espRates[] = {250000.0, 125000.0, 62500.0, 31250.0, 15625.0};
+        static const double espRates[] = {250000.0, 125000.0, 62500.0, 31250.0, 15625.0, 500000.0, 2000000.0};
         app.active = &app.espSdr;
-        int rateIdx = std::max(0, std::min(app.espSampleRateIdx, 4));
+        int rateIdx = std::max(0, std::min(app.espSampleRateIdx, 6));
         app.espSdr.setSampleRate(espRates[rateIdx]);
         app.espSdr.setCenterFreq(app.centerFreqMHz * 1e6);
         app.espSdr.setGain(app.espAutoGain ? -1.0 : (double)app.espGainIndex);
         app.espSdr.setPpm((double)app.espPpm);
         app.espSdr.setDcBlock(app.dcBlock);
-        ok = app.espSdr.start(0, cb, err);
+        ok = app.espSdr.start(app.espDeviceIndex, cb, err);
     }
-#endif
 
     if (ok)
     {

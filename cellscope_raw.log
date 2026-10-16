@@ -1,0 +1,273 @@
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+Found Rafael Micro R820T tuner
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] No valid PLL values for 1958177337 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1957970038 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1957552477 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1957300756 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1957217837 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1957220798 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1957217837 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1957105302 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1956758816 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1956373831 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1956113226 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1956101381 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1955953309 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1955683820 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1955411369 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1955195185 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1955100420 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1955091536 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1954970117 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1954629554 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1954238646 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953995810 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953918813 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953912890 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953824047 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953521982 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953134036 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953131075 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1953054078 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1952772743 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1952361105 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1952067924 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1951922814 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1951881355 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1951875432 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1951822126 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1951638518 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1951357183 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1951078809 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1950868548 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1950753053 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1950702709 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1950687902 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] No valid PLL values for 1950684940 Hz!
+r82xx_set_freq: failed=-1
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[R82XX] PLL not locked!
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+Found Rafael Micro R820T tuner
+[R82XX] PLL not locked!
+[R82XX] No valid PLL values for 1901814877 Hz!
+r82xx_set_freq: failed=-1
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_sync.c:772: Error receiving samples[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:317: Error calling srsran_ue_sync_work()[0m
+[31m/Users/wjk/Code/LTEScope/third_party/srsran/phy/ue/ue_cell_search.c:277: Error searching cell[0m

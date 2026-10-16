@@ -40,6 +40,14 @@ fi
 git -C "${source_dir}" fetch --quiet origin "${revision}"
 git -C "${source_dir}" checkout --quiet --detach "${revision}"
 git -C "${source_dir}" submodule update --init --recursive
+for patch in "${script_dir}"/patches/*.patch; do
+  [[ -e "${patch}" ]] || continue
+  if git -C "${source_dir}" apply --reverse --check "${patch}" 2>/dev/null; then
+    continue
+  fi
+  git -C "${source_dir}" apply --check "${patch}"
+  git -C "${source_dir}" apply "${patch}"
+done
 
 build_dir="${ESP_SDR_BUILD_DIR:-${root_dir}/build-firmware/${target}}"
 output_dir="${root_dir}/web/firmware/${target}"

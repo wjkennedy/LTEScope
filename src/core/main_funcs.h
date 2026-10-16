@@ -28,8 +28,8 @@ void drawDecoders(App&);
 void drawSUs(App&);
 void drawConstellation(App&);
 void drawAbout(App&);
-#ifdef HAS_LTE
 void drawLte(App&);
+#ifdef HAS_LTE
 void drawLteUes(App&);
 void drawLteTraffic(App&);
 void drawLteCalls(App&);

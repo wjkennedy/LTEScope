@@ -80,7 +80,9 @@ struct App
     int  serverSampleType = 1;
     double serverSampleRateMHz = 2.0;
 
-    // ESP32/S3 running receive-only ESP-SDR firmware (Web Serial browser build).
+    // ESP32/S3 running receive-only ESP-SDR firmware.
+    int   espDeviceIndex = 0;
+    std::vector<SdrDeviceInfo> espDevices;
     int   espSampleRateIdx = 0;
     bool  espAutoGain = true;
     int   espGainIndex = 32;
@@ -155,12 +157,12 @@ struct App
     int  maxLesAutoDecoders = 4;  // cap on auto-created LES decoders
 
     VersionCheck verCheck;
+    bool   showLte = true;       // visible even when this build lacks the LTE backend
 
 #ifdef HAS_LTE
     // LTE decode engine (srsRAN/FALCON/LTESniffer). Fed the active SDR's IQ.
     cellscope::lte::LteEngine lteEngine;
     bool   lteRunning = false;   // user toggled LTE decode on
-    bool   showLte    = true;
     std::set<uint16_t> lteWatched;      // pinned RNTIs ("my phone")
     char   lteUeFilter[64]      = "";   // filter UEs by RNTI/identity
     char   lteTrafficFilter[64] = "";   // filter Traffic by RNTI/text

@@ -108,8 +108,8 @@ Module.cellscopeEsp = (() => {
   }
 
   function nearestDecimation(rate) {
-    const wanted = Math.max(15625, Math.min(250000, rate));
-    const choices = [64, 128, 256, 512, 1024];
+    const wanted = Math.max(15625, Math.min(2000000, rate));
+    const choices = [8, 32, 64, 128, 256, 512, 1024];
     return choices.reduce((best, value) =>
       Math.abs(16000000 / value - wanted) < Math.abs(16000000 / best - wanted) ? value : best);
   }
@@ -181,7 +181,7 @@ Module.cellscopeEsp = (() => {
   function deliver(payload, bits) {
     const ptr = _malloc(payload.byteLength); HEAPU8.set(payload, ptr);
     Module._cellscope_web_esp_sample_block(ptr, payload.byteLength, bits,
-      bits === 16 ? 32768 : 128);
+      bits === 16 ? 32768 : bits === 8 ? 128 : bits === 4 ? 8 : bits === 2 ? 2 : 1);
     _free(ptr);
   }
 
@@ -201,7 +201,9 @@ Module.cellscopeEsp = (() => {
         throw new Error("Lost synchronization with IQS1 stream");
       const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
       const samples = view.getUint16(16, true), bits = header[18];
-      const payloadBytes = bits === 4 ? samples : samples * 2 * (bits / 8);
+      const payloadBytes = bits === 1 ? Math.ceil(samples / 4) :
+        bits === 2 ? Math.ceil(samples / 2) :
+        bits === 4 ? samples : samples * 2 * (bits / 8);
       const payloadAndCrc = await readExact(payloadBytes + 4);
       const payload = payloadAndCrc.slice(0, payloadBytes);
       const expected = new DataView(payloadAndCrc.buffer, payloadAndCrc.byteOffset + payloadBytes, 4)
@@ -210,7 +212,7 @@ Module.cellscopeEsp = (() => {
         console.warn("ESP-SDR IQS1 CRC mismatch");
         continue;
       }
-      if (bits === 8 || bits === 16) deliver(payload, bits);
+      if (bits === 1 || bits === 2 || bits === 4 || bits === 8 || bits === 16) deliver(payload, bits);
     }
   }
 
@@ -240,7 +242,9 @@ Module.cellscopeEsp = (() => {
     const generation = ++state.generation;
     if (state.continuous) {
       const decimation = nearestDecimation(state.sampleRate);
-      const line = await command(`IQS 0 ${decimation} 8 6`, "IQS ");
+      const bits = decimation === 8 ? 1 : decimation === 32 ? 4 : 8;
+      const shift = decimation === 8 ? " 0" : "";
+      const line = await command(`IQS 0 ${decimation} ${bits} 6${shift}`, "IQS ");
       state.sampleRate = Number(line.split(/\s+/)[1]) / decimation;
       state.pumpPromise = pumpContinuous(generation);
     } else {

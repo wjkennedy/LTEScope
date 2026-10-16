@@ -7,11 +7,11 @@ as its receive-only firmware base, pinned to commit
 
 ## Target matrix
 
-| Target | Connection | LTEScope capture mode | LoRa hardware |
-| --- | --- | --- | --- |
-| LilyGO T-Display S3 | Native USB Serial/JTAG | Continuous IQS1, 15.625–250 kSa/s | External SX1262 |
-| Heltec WiFi LoRa 32 V3 | Onboard CP2102 UART | Gapped 16 MS/s IQ8 snapshots | Onboard SX1262 |
-| CYD-2432S028 | Onboard USB-to-UART | Gapped 16 MS/s IQ8 snapshots | External module |
+| Target | Connection | LTEScope capture mode | Validation | LoRa hardware |
+| --- | --- | --- | --- | --- |
+| LilyGO T-Display S3 | Native USB Serial/JTAG | Continuous IQS1, 15.625–250 kSa/s IQ8; experimental 500 kSa/s IQ4 and 2 MSa/s IQ1 | 250 kSa/s waterfall and gapless 2 MSa/s transport confirmed | External SX1262 |
+| Heltec WiFi LoRa 32 V3 | Onboard CP2102 UART | Gapped 16 MS/s IQ8 snapshots | Protocol confirmed; app retest pending | Onboard SX1262 |
+| CYD-2432S028 | Onboard USB-to-UART | Intended gapped snapshots | Experimental: boots, no protocol reply on tested board | External module |
 
 All three current images are headless receiver firmware. They do not initialize
 the Heltec OLED, CYD TFT, or T-Display LCD; a blank or unchanged board display
@@ -25,15 +25,32 @@ connector through a CP2102, so its stock connection uses snapshot mode. A
 separate USB connector wired to ESP32-S3 GPIO19/20 can enable native USB on a
 hardware-modified Heltec board.
 
+LTEScope applies a small, checked-in patch to the pinned upstream source. It
+adds a phase-aligned ×32 FIR decimator for 500 kSa/s output and exposes the
+existing first-stage ×8 FIR directly for 2 MSa/s output. The modes use packed
+IQ4 (one complex sample per byte) and sign-only IQ1 (four complex samples per
+byte), respectively, keeping both streams near 0.5 MB/s over full-speed USB
+Serial/JTAG. The original ×64 through ×1024 IQ8 modes are unchanged, and
+250 kSa/s remains the default until the higher rates are validated for
+RF quality on hardware. Before IQ1 packing, the firmware applies a slow
+fixed-point DC estimate so receiver offset does not collapse either sign bit.
+
+A 10-second T-Display test at 1950 MHz delivered 20,001,433 samples at an
+effective 1.998 MSa/s and 0.499 MB/s, with zero CRC errors, firmware gap flags,
+or missing sample indices. IQ2 at the same rate was also tested, but exceeded
+the measured USB Serial/JTAG ceiling and dropped frames; it remains a protocol
+experiment for a future TinyUSB bulk transport rather than an app default.
+
 The Heltec profile starts UART0 at 921600 baud. The CYD profile currently uses
 a conservative 115200 baud because high-rate transfers were corrupt through
 the tested CH340/macOS path; its snapshot refresh is correspondingly slow.
 The browser selects these rates from the bridge's USB vendor ID. T-Display
 native USB retains the upstream 2 Mbaud setting.
 
-Unlike the previous Zephyr basis, this firmware also supports the classic
-ESP32 in the CYD. Its snapshot captures have transfer gaps, but they cover a
-wide instantaneous bandwidth and are useful for spectrum/waterfall monitoring.
+The upstream basis contains a classic ESP32 snapshot backend intended for the
+CYD. On the tested CYD the image boots but does not reach the command protocol,
+even after isolating UART0 and reducing the CH340 rate. Treat this target as
+experimental until a protocol reply and app waterfall are confirmed.
 
 The SX1262 remains an independent receiver. Its LoRa CAD/RSSI/packet telemetry
 interface will be added as a second firmware/host protocol; it is not yet
@@ -83,7 +100,7 @@ If a T-Display does not enter the downloader automatically, hold **BOOT**, tap
 **RESET**, and release **BOOT**. After flashing, a normal reset must be made
 without holding BOOT. CYD commonly enumerates as CH340 and Heltec V3 as CP2102.
 
-The tested protocol-6 identity replies are:
+The protocol-6 identity replies are:
 
 ```text
 T-Display S3: S3SDR 6 burst 16380
@@ -91,14 +108,28 @@ Heltec V3:    S3SDR 6 burst 16380
 CYD:          ESP32SDR 6 burst 16380
 ```
 
-In LTEScope, choose **ESP-SDR board**, click **Start**, and select the desired
-serial device. Native USB on T-Display enables continuous decimated IQ. Heltec
-and CYD operate in gapped snapshot mode. The browser selects 921600 baud for
-the Heltec CP2102, 115200 baud for the CYD CH340, and 2 Mbaud for native
-Espressif USB.
+T-Display and Heltec identities above have been verified on hardware. The CYD
+line is the expected upstream identity and has not yet been observed on the
+tested CYD.
+
+In either the browser build or native macOS/Linux LTEScope, choose **ESP-SDR
+board**, click **Start**, and select the desired serial device. Native USB on
+T-Display enables continuous decimated IQ. Heltec
+operates in gapped snapshot mode; CYD is intended to use the same mode once its
+protocol issue is resolved. The browser selects 921600 baud for the Heltec
+CP2102, 115200 baud for the CYD CH340, and 2 Mbaud for native Espressif USB.
 During connection the app should say **Connecting ESP-SDR** and then show the
 firmware identity above. If it remains at the Web Serial handshake, the serial
 port or baud-rate negotiation has not completed.
+
+Native builds retain the full LTE decoder and allow it to be started with an
+ESP-SDR source selected. T-Display's 250 kS/s default and experimental 500 kS/s
+stream remain undersampled. The experimental 2 MS/s IQ1 stream meets the
+decoder's nominal 1.92 MS/s input rate, but its sign-only quantization and USB
+continuity still make this an optimization and signal-processing experiment
+rather than a claim of full-channel LTE support.
+The LTE sweep also supports ESP-SDR and restarts the serial IQ stream after each
+frequency change.
 
 ## Limits and safety
 
@@ -108,9 +139,9 @@ extend ESP32/S3 reception to approximately 1842–2209 MHz, which includes LTE
 Band 2 downlink at 1930–1990 MHz. Performance varies by chip and board.
 
 LTEScope uses receive commands only. The firmware uses undocumented RF test
-controls and should not later be used in a certified product. Continuous S3 IQ
-is too narrow for a full LTE channel; UART snapshots contain gaps and cannot
-feed the LTE decoder.
+controls and should not later be used in a certified product. The experimental
+2 MS/s S3 stream is only wide enough for the smallest LTE channel and uses IQ1;
+UART snapshots contain gaps and cannot feed the LTE decoder.
 
 ## License
 

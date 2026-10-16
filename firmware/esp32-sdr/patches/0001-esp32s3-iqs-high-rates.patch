@@ -1,0 +1,274 @@
+diff --git a/main/common/ring_capture.c b/main/common/ring_capture.c
+index 7972e26..5640222 100644
+--- a/main/common/ring_capture.c
++++ b/main/common/ring_capture.c
+@@ -632,7 +632,7 @@ RING_HOT static void unit_done(void) {
+ /* ---- IQ streaming (IQS1) ------------------------------------------------
+  * Each finished unit goes through a two-stage decimating FIR (below), on
+  * core 1 when the DSP core runs, else in slices between polls on core 0;
+- * the output is rounded >> shift, saturated to 4/8/16 bits and packed into
++ * the output is rounded >> shift, saturated to 1/2/4/8/16 bits and packed into
+  * 1024-byte frames. The header carries the decimated
+  * sample index of the first sample, so the host sees every gap. */
+ #define IQS_MAGIC 0x31535149u /* "IQS1" */
+@@ -659,18 +659,23 @@ static struct {
+     uint32_t dec, log2d, bits, shift;
+     uint64_t out_index;       /* decimated index of the next output sample */
+     uint64_t frame_index;     /* decimated index of buf[0] */
++    int32_t dc_i, dc_q; bool dc_valid; /* Q10 pre-quantizer DC estimate for IQ1 */
+     uint32_t fill, frame, lost_pairs; uint8_t flags, gain;
+     uint8_t *out;             /* heap: header + payload + CRC */
+ } iqs;
+ static void iqs_flush(void);
+ static inline void iqs_put(int32_t i, int32_t q);
++static void iqs_put1_block(const int16_t *ii, const int16_t *qq, uint32_t n);
++static void iqs_put2_block(const int16_t *ii, const int16_t *qq, uint32_t n);
+ 
+ /* ---- decimating FIR for IQS (split I/Q arrays, PIE) -----------------------
+- * D = 8 x (D/8) with D >= 64 (power of two): every window starts on a
+- * multiple of 8 samples, i.e. 16-byte aligned. Stage 1: 32 taps, stage 2:
++ * D = 8 is emitted directly; D = 8 x (D/8) with D >= 32 uses both stages.
++ * Stage 1: 32 taps, stage 2:
+  * 18*D2 taps (max 256). Kaiser windowed sinc, beta 5.65 (~60 dB), pass band
+  * 0.4 and stop band 0.6 of the output rate. Each stage keeps L samples of
+  * history, so the output is continuous across slices and units.
++ * D2=4 alternates 8-byte and 16-byte-aligned windows. Its phase-padded
++ * coefficients let the PIE kernel process both phases with aligned loads.
+  * Scale: ring I<<6 -> stage 1 I*16 -> stage 2 I*32 (what iqs_put gets). */
+ typedef struct {
+     const int16_t *xi, *xq, *h;
+@@ -690,10 +695,12 @@ static const int16_t fir_rot_masks[24] __attribute__((aligned(16))) = {
+ typedef struct {
+     uint32_t D, L, n, cap, shift;   /* decimation, taps, samples in wi/wq, capacity, accx shift */
+     uint64_t base, next_end;        /* input index of wi[0]; last input index of the next output */
+-    int16_t *h, *wi, *wq;
++    int16_t *h, *h4, *wi, *wq;
+ } fstage_t;
+ static fstage_t fs1, fs2;
+ static int16_t *fir_oi, *fir_oq;
++static int16_t *fir_ti, *fir_tq;
++static bool fir_direct;
+ static float fir_i0(float x) { float s = 1.0f, t = 1.0f; for (int k = 1; k < 30; k++) { float q = x / (2.0f * k); t *= q * q; s += t; } return s; }
+ static float fir_tap(uint32_t i, uint32_t L, float fc) {
+     float m = (float)i - 0.5f * (float)(L - 1), x = 2.0f * fc * m;
+@@ -704,6 +711,7 @@ static float fir_tap(uint32_t i, uint32_t L, float fc) {
+ static void *fir_alloc(size_t n) { return heap_caps_aligned_alloc(16, n, MALLOC_CAP_DMA | MALLOC_CAP_8BIT); }
+ static bool fstage_init(fstage_t *s, uint32_t D, uint32_t L, uint32_t shift, uint32_t in_max) {
+     s->D = D; s->L = L; s->shift = shift; s->cap = 2u * L + in_max + 16u;
++    s->h4 = NULL;
+     s->h = fir_alloc(2u * L); s->wi = fir_alloc(2u * s->cap); s->wq = fir_alloc(2u * s->cap);
+     if (!s->h || !s->wi || !s->wq) return false;
+     float fc = 0.5f / (float)D, sum = 0.0f;
+@@ -726,9 +734,15 @@ static bool fstage_init(fstage_t *s, uint32_t D, uint32_t L, uint32_t shift, uin
+     }
+     for (uint32_t i = 0; i < L; i++) sum += fir_tap(i, L, fc);
+     for (uint32_t i = 0; i < L; i++) s->h[i] = (int16_t)lrintf(32768.0f * fir_tap(i, L, fc) / sum);
++    if (D == 4u) {
++        s->h4 = fir_alloc(2u * (L + 8u));
++        if (!s->h4) return false;
++        memset(s->h4, 0, 2u * (L + 8u));
++        memcpy(s->h4 + 4u, s->h, 2u * L);
++    }
+     return true;
+ }
+-static void fstage_free(fstage_t *s) { free(s->h); free(s->wi); free(s->wq); s->h = s->wi = s->wq = NULL; }
++static void fstage_free(fstage_t *s) { free(s->h); free(s->h4); free(s->wi); free(s->wq); s->h = s->h4 = s->wi = s->wq = NULL; }
+ static void fstage_reset(fstage_t *s, uint64_t start) {
+     memset(s->wi, 0, 2u * s->L); memset(s->wq, 0, 2u * s->L);
+     s->n = s->L; s->base = start - s->L; s->next_end = start + s->D - 1u;
+@@ -739,8 +753,28 @@ IRAM_ATTR static uint32_t fstage_run(fstage_t *s, int16_t *oi, int16_t *oq) {
+     if (s->next_end < s->base + s->n) {
+         no = (uint32_t)(s->base + s->n - 1u - s->next_end) / s->D + 1u;
+         uint32_t off = (uint32_t)(s->next_end + 1u - s->L - s->base);
+-        fir_job_t j = {s->wi + off, s->wq + off, s->h, s->L / 8u, no, 2u * s->D, s->shift, oi, oq};
+-        if (s->D == 8u && s->L == 32u) s3_fir8_l32(&j); else s3_fir_split(&j);
++        if (s->D == 4u) {
++            const bool shifted_first = (off & 4u) != 0;
++            const uint32_t shifted_n = (no + (shifted_first ? 1u : 0u)) / 2u;
++            const uint32_t normal_n = no - shifted_n;
++            const uint32_t base = shifted_first ? off - 4u : off;
++            fir_job_t shifted = {s->wi + base, s->wq + base, s->h4,
++                                 (s->L + 8u) / 8u, shifted_n, 16u, s->shift, oi, oq};
++            fir_job_t normal = {s->wi + base + (shifted_first ? 8u : 0u),
++                                s->wq + base + (shifted_first ? 8u : 0u), s->h,
++                                s->L / 8u, normal_n, 16u, s->shift, fir_ti, fir_tq};
++            if (shifted_n) s3_fir_split(&shifted);
++            if (normal_n) s3_fir_split(&normal);
++            for (uint32_t k = no; k-- > 0;) {
++                const bool shifted_k = shifted_first ? !(k & 1u) : (k & 1u);
++                const uint32_t p = k / 2u;
++                oi[k] = shifted_k ? oi[p] : fir_ti[p];
++                oq[k] = shifted_k ? oq[p] : fir_tq[p];
++            }
++        } else {
++            fir_job_t j = {s->wi + off, s->wq + off, s->h, s->L / 8u, no, 2u * s->D, s->shift, oi, oq};
++            if (s->D == 8u && s->L == 32u) s3_fir8_l32(&j); else s3_fir_split(&j);
++        }
+         s->next_end += (uint64_t)no * s->D;
+     }
+     /* Drop consumed samples only when the rest (< L) does not overlap them:
+@@ -778,28 +812,37 @@ IRAM_ATTR static void fir_feed(const uint32_t *p, uint32_t a, uint32_t m) {
+             fs1.n += 8u * g; done += 8u * g;
+         }
+         while (done < take) fir_c1(p, a + done++, &fs1);
+-        fs2.n += fstage_run(&fs1, fs2.wi + fs2.n, fs2.wq + fs2.n);
+-        uint32_t k2 = fstage_run(&fs2, fir_oi, fir_oq);
+-        for (uint32_t i = 0; i < k2; i++) iqs_put(fir_oi[i], fir_oq[i]);
++        if (fir_direct) {
++            uint32_t k1 = fstage_run(&fs1, fir_oi, fir_oq);
++            if (iqs.bits == 1) iqs_put1_block(fir_oi, fir_oq, k1);
++            else iqs_put2_block(fir_oi, fir_oq, k1);
++        } else {
++            fs2.n += fstage_run(&fs1, fs2.wi + fs2.n, fs2.wq + fs2.n);
++            uint32_t k2 = fstage_run(&fs2, fir_oi, fir_oq);
++            for (uint32_t i = 0; i < k2; i++) iqs_put(fir_oi[i], fir_oq[i]);
++        }
+         a += take; m -= take;
+     }
+ }
+-static void fir_reset(uint64_t index) { fstage_reset(&fs1, index); fstage_reset(&fs2, index / 8u); }
+-static void fir_free(void) { fstage_free(&fs1); fstage_free(&fs2); free(fir_oi); free(fir_oq); fir_oi = fir_oq = NULL; }
++static void fir_reset(uint64_t index) { fstage_reset(&fs1, index); if (!fir_direct) fstage_reset(&fs2, index / 8u); }
++static void fir_free(void) { fstage_free(&fs1); fstage_free(&fs2); free(fir_oi); free(fir_oq); free(fir_ti); free(fir_tq); fir_oi = fir_oq = fir_ti = fir_tq = NULL; fir_direct = false; }
+ static bool fir_setup(uint32_t D) {
+-    if (D < 64u || (D & (D - 1u))) return false;
++    if ((D != 8u && D < 32u) || (D & (D - 1u))) return false;
++    fir_direct = D == 8u;
+     uint32_t D2 = D / 8u, L2 = (18u * D2 + 7u) & ~7u;
+     if (L2 > 256u) L2 = 256u;
+     fir_oi = fir_alloc(2u * 80u); fir_oq = fir_alloc(2u * 80u);
+-    return fir_oi && fir_oq && fstage_init(&fs1, 8u, 32u, 17u, FIR_CHUNK) &&
+-           fstage_init(&fs2, D2, L2, 14u, FIR_CHUNK / 8u);
++    fir_ti = fir_alloc(2u * 80u); fir_tq = fir_alloc(2u * 80u);
++    if (!fir_oi || !fir_oq || !fir_ti || !fir_tq ||
++        !fstage_init(&fs1, 8u, 32u, fir_direct ? 16u : 17u, FIR_CHUNK)) return false;
++    return fir_direct || fstage_init(&fs2, D2, L2, 14u, FIR_CHUNK / 8u);
+ }
+ 
+ IRAM_ATTR static void iqs_flush(void) {
+     if (!iqs.fill) return;
+-    unsigned per = iqs.bits == 16 ? 4u : iqs.bits == 8 ? 2u : 1u;
++    uint64_t ns = iqs.out_index - iqs.frame_index;
+     iqs_header_t h = {.magic = IQS_MAGIC, .frame = iqs.frame, .sample_index = iqs.frame_index,
+-                      .samples = (uint16_t)(iqs.fill / per), .bits = (uint8_t)iqs.bits, .flags = iqs.flags,
++                      .samples = (uint16_t)ns, .bits = (uint8_t)iqs.bits, .flags = iqs.flags,
+                       .dec = (uint16_t)iqs.dec, .gain = iqs.gain, .shift = (uint8_t)iqs.shift};
+     memcpy(iqs.out, &h, sizeof(h));
+     uint32_t len = sizeof(h) + iqs.fill;
+@@ -817,11 +860,87 @@ IRAM_ATTR static inline void iqs_put(int32_t i, int32_t q) {
+     if (i > lim) i = lim; else if (i < -lim - 1) i = -lim - 1;
+     if (q > lim) q = lim; else if (q < -lim - 1) q = -lim - 1;
+     uint8_t *o = iqs.out + sizeof(iqs_header_t) + iqs.fill;
+-    if (iqs.bits == 8) { o[0] = (uint8_t)i; o[1] = (uint8_t)q; iqs.fill += 2; }
++    if (iqs.bits == 2) {
++        uint8_t nibble = (uint8_t)((i & 3) | ((q & 3) << 2));
++        if ((iqs.out_index - iqs.frame_index) & 1u) o[-1] |= (uint8_t)(nibble << 4);
++        else { o[0] = nibble; iqs.fill++; }
++    }
++    else if (iqs.bits == 8) { o[0] = (uint8_t)i; o[1] = (uint8_t)q; iqs.fill += 2; }
+     else if (iqs.bits == 16) { o[0] = (uint8_t)i; o[1] = (uint8_t)(i >> 8); o[2] = (uint8_t)q; o[3] = (uint8_t)(q >> 8); iqs.fill += 4; }
+     else { o[0] = (uint8_t)((i & 15) | (q << 4)); iqs.fill += 1; }
+     iqs.out_index++;
+-    if (iqs.fill >= IQS_PAYLOAD) iqs_flush();
++    if (iqs.fill >= IQS_PAYLOAD && (iqs.bits != 2 || !((iqs.out_index - iqs.frame_index) & 1u))) iqs_flush();
++}
++IRAM_ATTR static inline uint8_t iqs_q2(int32_t x) {
++    if (iqs.shift) { int32_t h = 1 << (iqs.shift - 1); x = (x + h) >> iqs.shift; }
++    if (x > 1) x = 1; else if (x < -2) x = -2;
++    return (uint8_t)x & 3u;
++}
++IRAM_ATTR static inline uint8_t iqs_sign_pair(int16_t i, int16_t q) {
++    return (uint8_t)(((int32_t)i * 1024 >= iqs.dc_i) | (((int32_t)q * 1024 >= iqs.dc_q) << 1));
++}
++IRAM_ATTR static void iqs_put1_block(const int16_t *ii, const int16_t *qq, uint32_t n) {
++    int32_t si = 0, sq = 0;
++    for (uint32_t j = 0; j < n; j++) { si += ii[j]; sq += qq[j]; }
++    if (n) {
++        int32_t mi = si / (int32_t)n, mq = sq / (int32_t)n;
++        if (!iqs.dc_valid) { iqs.dc_i = mi * 1024; iqs.dc_q = mq * 1024; iqs.dc_valid = true; }
++        else { iqs.dc_i += (mi * 1024 - iqs.dc_i) >> 10; iqs.dc_q += (mq * 1024 - iqs.dc_q) >> 10; }
++    }
++    uint32_t k = 0;
++    while (k < n && ((iqs.out_index - iqs.frame_index) & 3u)) {
++        uint32_t p = (uint32_t)(iqs.out_index - iqs.frame_index) & 3u;
++        iqs.out[sizeof(iqs_header_t) + iqs.fill - 1u] |= (uint8_t)(iqs_sign_pair(ii[k], qq[k]) << (2u * p));
++        iqs.out_index++; k++;
++        if (iqs.fill >= IQS_PAYLOAD && !((iqs.out_index - iqs.frame_index) & 3u)) iqs_flush();
++    }
++    while (k + 3u < n) {
++        uint32_t room = IQS_PAYLOAD - iqs.fill;
++        uint32_t groups = (n - k) / 4u;
++        if (groups > room) groups = room;
++        uint8_t *o = iqs.out + sizeof(iqs_header_t) + iqs.fill;
++        for (uint32_t g = 0; g < groups; g++, k += 4u) {
++            o[g] = iqs_sign_pair(ii[k], qq[k]) |
++                   (uint8_t)(iqs_sign_pair(ii[k + 1u], qq[k + 1u]) << 2) |
++                   (uint8_t)(iqs_sign_pair(ii[k + 2u], qq[k + 2u]) << 4) |
++                   (uint8_t)(iqs_sign_pair(ii[k + 3u], qq[k + 3u]) << 6);
++        }
++        iqs.fill += groups; iqs.out_index += 4u * groups;
++        if (iqs.fill >= IQS_PAYLOAD) iqs_flush();
++    }
++    while (k < n) {
++        uint32_t p = (uint32_t)(iqs.out_index - iqs.frame_index) & 3u;
++        if (!p) { iqs.out[sizeof(iqs_header_t) + iqs.fill] = 0; iqs.fill++; }
++        iqs.out[sizeof(iqs_header_t) + iqs.fill - 1u] |= (uint8_t)(iqs_sign_pair(ii[k], qq[k]) << (2u * p));
++        iqs.out_index++; k++;
++    }
++}
++IRAM_ATTR static void iqs_put2_block(const int16_t *ii, const int16_t *qq, uint32_t n) {
++    uint32_t k = 0;
++    if (n && ((iqs.out_index - iqs.frame_index) & 1u)) {
++        uint8_t *o = iqs.out + sizeof(iqs_header_t) + iqs.fill - 1u;
++        *o |= (uint8_t)((iqs_q2(ii[0]) | (iqs_q2(qq[0]) << 2)) << 4);
++        iqs.out_index++; k++;
++        if (iqs.fill >= IQS_PAYLOAD) iqs_flush();
++    }
++    while (k + 1u < n) {
++        uint32_t room = IQS_PAYLOAD - iqs.fill;
++        uint32_t pairs = (n - k) / 2u;
++        if (pairs > room) pairs = room;
++        uint8_t *o = iqs.out + sizeof(iqs_header_t) + iqs.fill;
++        for (uint32_t p = 0; p < pairs; p++, k += 2u) {
++            uint8_t a = iqs_q2(ii[k]) | (uint8_t)(iqs_q2(qq[k]) << 2);
++            uint8_t b = iqs_q2(ii[k + 1u]) | (uint8_t)(iqs_q2(qq[k + 1u]) << 2);
++            o[p] = a | (uint8_t)(b << 4);
++        }
++        iqs.fill += pairs; iqs.out_index += 2u * pairs;
++        if (iqs.fill >= IQS_PAYLOAD) iqs_flush();
++    }
++    if (k < n) {
++        uint8_t *o = iqs.out + sizeof(iqs_header_t) + iqs.fill;
++        o[0] = iqs_q2(ii[k]) | (uint8_t)(iqs_q2(qq[k]) << 2);
++        iqs.fill++; iqs.out_index++;
++    }
+ }
+ /* Process up to n pairs of the pending unit; returns true while work remains. */
+ /* single-core fallback only (DUAL 0); kept out of IRAM, which is full */
+@@ -1345,7 +1464,9 @@ RING_HOT void ring_capture_run(const ring_config_t *cfg, ring_result_t *r) {
+     if (iq) {
+         unsigned d = cfg->iq_dec, l = 0;
+         while ((1u << l) < d) l++;
+-        if (d < 64u || d > 1024u || (1u << l) != d || (cfg->iq_bits != 4 && cfg->iq_bits != 8 && cfg->iq_bits != 16) || cfg->iq_shift > 24) {
++        if ((d != 8u && d < 32u) || d > 1024u || (1u << l) != d ||
++            (d == 8u && cfg->iq_bits != 1 && cfg->iq_bits != 2) ||
++            (cfg->iq_bits != 1 && cfg->iq_bits != 2 && cfg->iq_bits != 4 && cfg->iq_bits != 8 && cfg->iq_bits != 16) || cfg->iq_shift > 24) {
+             fail(r, RING_FAIL_ARG, 2); return;
+         }
+         memset(&iqs, 0, offsetof(typeof(iqs), out));
+diff --git a/main/common/ring_capture.h b/main/common/ring_capture.h
+index e023977..7c5f372 100644
+--- a/main/common/ring_capture.h
++++ b/main/common/ring_capture.h
+@@ -59,8 +59,8 @@ typedef struct {
+     unsigned units_per_frame;  /* SPEC: units merged into one output frame */
+     bool max_hold;             /* SPEC: per-bin max instead of mean power */
+     bool stats;                /* SPEC: insert SPS1 statistics frames (~4/s) */
+-    unsigned iq_dec;           /* IQ: decimation 64..1024 (power of two), two-stage FIR */
+-    unsigned iq_bits;          /* IQ: 4, 8 or 16 bits per component */
++    unsigned iq_dec;           /* IQ: decimation 8 or 32..1024 (power of two) */
++    unsigned iq_bits;          /* IQ: 1, 2, 4, 8 or 16 bits per component */
+     unsigned iq_shift;         /* IQ: rounding right shift of the FIR output (10-bit sample * 32) */
+     bool iq_rot;               /* IQ: shift by +fs/4 before the FIR (LO tuned fs/4 below) */
+ } ring_config_t;
+

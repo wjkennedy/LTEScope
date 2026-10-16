@@ -7,13 +7,42 @@ Current direction:
 
 - Native desktop first, with macOS now supported as a real build target.
 - Optional SDR hardware backends for RTL-SDR, HackRF, and Airspy.
-- LTE decoding stays vendored and optional through `HAS_LTE`.
+- LTE decoding remains vendored and is enabled by default in native builds;
+  it can be disabled explicitly with `HAS_LTE=OFF`.
 - On macOS, LTE uses a direct srsRAN 4G backend. Falcon/LTESniffer stays on
   the non-macOS path for now.
 - Emscripten/WebAssembly is experimental, but there is now a browser build
   path for RTL-SDR over WebUSB and receive-only ESP32 SDR monitoring over Web Serial.
 
 The build is CMake-based and uses Ninja.
+
+## LTE decoding and ESP-SDR
+
+LTE decoding has not been removed. Native macOS, Linux, and Windows builds keep
+the LTE panel and decoder; the macOS and Linux helper scripts configure
+`HAS_LTE=ON`. Use a continuous-IQ source with at least the decoder's 1.92 MS/s
+input rate, such as a supported RTL-SDR, for cell search and decoding.
+
+The ESP-SDR integration is currently a complementary spectrum-monitoring path
+and an experimental LTE input. T-Display S3 supports 15.625–250 kS/s IQ8 plus
+LTEScope-specific experimental 500 kS/s IQ4 and 2 MS/s IQ1 modes, while Heltec
+and the intended CYD mode return gapped snapshots. Both are useful for finding
+activity and displaying a waterfall, but neither supplies the decoder's nominal
+continuous 1.92 MS/s input. The native app nevertheless exposes the LTE controls
+and permits undersampled/snapshot experiments; it warns instead of blocking
+them. LoRa receive telemetry is also planned as a separate input.
+
+The native LTE sweep can retune ESP-SDR as well as conventional SDR sources.
+For T-Display it stops and resynchronizes the serial IQ stream at each step.
+Band 2 and Band 4/66 centers are included in the preset list; range mode can be
+used for finer experimental scans.
+
+| Build/source | Spectrum and waterfall | LTE decode |
+| --- | --- | --- |
+| Native app + continuous wideband SDR | Yes | Yes |
+| Native app + ESP-SDR board | Yes (macOS/Linux serial) | Experimental undersampled/snapshot input |
+| Browser app + WebUSB RTL-SDR | Yes | Not yet; browser decoder port pending |
+| Browser app + ESP-SDR board | Yes | No; transport bandwidth/continuity is insufficient |
 
 ## Quick Start: ESP-SDR Web App
 
@@ -59,10 +88,16 @@ Use the MSYS2 MINGW64 shell and install the toolchain packages listed in
 ### Emscripten
 
 This target emits `LTEScope.js`, `LTEScope.wasm`, the application page, and the
-ESP32 flasher. It is the supported path for WebUSB/Web Serial radio access;
-LTE decode is disabled in the browser build for now; the web target is focused
-on spectrum/browser-radio and raw debug capture. The ESP32-S3 source uses the
-`esp-sdr-s2-range` IQS1 protocol at up to 250 kS/s over native USB. UART boards
+ESP32 flasher. It is the supported path for WebUSB/Web Serial radio access.
+Native LTE decoding remains available, but its srsRAN/FFTW worker has not yet
+been ported to WebAssembly, so the browser target currently focuses on
+spectrum/browser-radio and raw debug capture. The ESP32-S3 source uses the
+`esp-sdr-s2-range` IQS1 protocol at up to 250 kS/s IQ8 over native USB, plus
+experimental 500 kS/s IQ4 and 2 MS/s IQ1 firmware extensions. The 2 MS/s mode
+meets the LTE decoder's minimum input-rate requirement by packing four complex
+sign samples per byte. A 10-second T-Display hardware run delivered 1.998 MS/s
+with no CRC errors, flagged frames, or missing sample indices; LTE decode
+quality remains under validation. UART boards
 use gapped 16 MS/s snapshots. These modes can monitor LTE Band 2 spectrum, but
 cannot provide a gapless full LTE channel to the decoder.
 
@@ -104,9 +139,11 @@ context, so `localhost` is fine. Chrome or Edge desktop is required.
 ![screenshot2.png](screenshot2.png)
 
 The receive-only targets are Heltec WiFi LoRa 32 V3, LilyGO T-Display S3, and
-CYD-2432S028. T-Display uses continuous native-USB IQ; Heltec and CYD use
-gapped wideband snapshots through their serial bridges. These first images are
-headless: they do not initialize the Heltec OLED, CYD TFT, or T-Display LCD.
+CYD-2432S028. T-Display uses continuous native-USB IQ; Heltec uses gapped
+wideband snapshots through its serial bridge. The classic-ESP32 CYD target is
+currently experimental: it boots on the tested board but has not produced a
+protocol reply. These first images are headless: they do not initialize the
+Heltec OLED, CYD TFT, or T-Display LCD.
 The spectrum and waterfall are rendered by the LTEscope web app. Build the
 pinned firmware, then rebuild the web target:
 
@@ -136,9 +173,9 @@ Use the helper scripts when you want a single command per target:
 ./scripts/build-emscripten.sh
 ```
 
-The native scripts enable LTE and require RTL-SDR development files. The
-Emscripten script disables LTE decode and builds the WebUSB RTL-SDR and
-ESP-SDR bridge.
+The native scripts enable LTE and require FFTW plus the relevant SDR development
+files. The Emscripten script disables only the browser decoder and builds the
+WebUSB RTL-SDR and ESP-SDR bridge; it does not remove LTE from native builds.
 
 ### macOS
 
@@ -194,6 +231,8 @@ Examples:
 cmake -S . -B build -G Ninja -DHAS_LTE=OFF
 cmake -S . -B build -G Ninja -DHAS_LTE=ON
 ```
+
+`HAS_LTE` defaults to `ON` for native builds and `OFF` for Emscripten.
 
 ## Notes
 

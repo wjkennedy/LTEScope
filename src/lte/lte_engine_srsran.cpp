@@ -263,8 +263,13 @@ struct LteEngine::Impl {
         const cf_t* src = stage;
         int         n   = ns;
         if (!resample_bypass) {
-            if ((int)resample_out.size() < ns * 2 + 64) {
-                resample_out.resize(ns * 2 + 64);
+            // The ESP-SDR experiment can enter here below 1.92 MS/s, which is
+            // interpolation rather than the usual SDR downsampling path.
+            // Size for either direction so an undersampled source remains a
+            // safe, testable input instead of overflowing the scratch buffer.
+            const size_t needed = (size_t)std::ceil(ns * std::max(1.0, (double)resampler.rate)) + 64;
+            if (resample_out.size() < needed) {
+                resample_out.resize(needed);
             }
             n   = srsran_resample_arb_compute(&resampler, (cf_t*)stage, resample_out.data(), ns);
             src = resample_out.data();
@@ -811,7 +816,7 @@ void LteEngine::start(const EngineConfig& cfg)
         char buf[160];
         std::snprintf(buf,
                       sizeof(buf),
-                      "Input %.3f Msps -> decimate /%d -> 1.92 Msps; searching...",
+                      "Input %.3f Msps -> resample to 1.92 Msps (stage /%d); searching...",
                       cfg.input_sample_rate_hz / 1e6,
                       impl_->decim.D);
         impl_->set_status(buf);

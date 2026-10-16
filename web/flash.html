@@ -66,10 +66,11 @@
       </article>
 
       <article class="card">
-        <span class="tag">Classic ESP32 snapshots</span>
+        <span class="tag pending">Experimental / unverified</span>
         <h2>CYD-2432S028</h2>
-        <p>Receive-only ESP-SDR snapshots over the onboard USB-to-UART bridge.
-          Captures have gaps but cover 16 MHz instantaneously.</p>
+        <p>The image boots on the tested classic ESP32 CYD, but its receiver
+          command protocol has not yet responded through the onboard CH340.
+          Flash for development and recovery testing, not as a working target.</p>
         <p>Hold <code>BOOT</code>, tap <code>RESET</code>, release <code>BOOT</code>, then install.</p>
         <div class="action">
           <esp-web-install-button manifest="firmware/cyd/manifest.json"></esp-web-install-button>

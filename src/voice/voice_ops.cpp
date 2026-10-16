@@ -14,12 +14,10 @@ void retuneActive(App& app, double centerMHz)
     double hz = centerMHz * 1e6;
     app.centerFreqMHz = centerMHz;
     app.viewA.resetView = true;
-    if (app.sourceMode == 0)
+    if (app.sourceMode == 0 || app.sourceMode == 4)
         app.sdr.setCenterFreq(hz);
-#ifdef __EMSCRIPTEN__
     else if (app.sourceMode == 7)
         app.espSdr.setCenterFreq(hz);
-#endif
 #ifndef __EMSCRIPTEN__
     else if (app.sourceMode == 2)
         app.server.setCenterFreq(hz);
@@ -56,10 +54,8 @@ void retunePreserving(App& app, double centerMHz)
     app.centerFreqMHz = centerMHz;
     if (app.sourceMode == 0 || app.sourceMode == 4)
         app.sdr.setCenterFreq(hz);
-#ifdef __EMSCRIPTEN__
     else if (app.sourceMode == 7)
         app.espSdr.setCenterFreq(hz);
-#endif
 #ifndef __EMSCRIPTEN__
     else if (app.sourceMode == 2)
         app.server.setCenterFreq(hz);

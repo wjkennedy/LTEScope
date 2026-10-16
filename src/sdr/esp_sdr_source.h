@@ -8,6 +8,7 @@
 #include <atomic>
 #include <functional>
 #include <string>
+#include <thread>
 #include <vector>
 
 class EspSdrSource : public SdrSource
@@ -22,6 +23,7 @@ public:
     void setGain(double gainIndex) override;
     void setBiasTee(bool) override {}
     void setPpm(double ppm) override;
+    void setDeviceIndex(int index) { deviceIndex_ = index; }
 
     double centerFreq() const override { return centerFreq_; }
     double sampleRate() const override { return sampleRate_; }
@@ -46,6 +48,12 @@ public:
 #endif
 
 private:
+    void processSamples(const unsigned char* data, int len, int bits, int fullScale);
+#if !defined(__EMSCRIPTEN__) && !defined(_WIN32)
+    void nativePump();
+    bool nativeConfigureStream(std::string& err);
+    bool nativeRestartStream();
+#endif
     std::atomic<bool> running_{false};
     std::atomic<bool> dcBlock_{true};
     SdrSampleCb cb_;
@@ -62,10 +70,15 @@ private:
     float dcOffIm_ = 0.0f;
     float dcRate_ = 2.0e-4f;
     std::vector<float> scratch_;
+    int deviceIndex_ = 0;
 
 #ifdef __EMSCRIPTEN__
     bool browserPrepared_ = false;
     bool browserPreparing_ = false;
     BrowserPrepareCb browserPrepareCb_;
+#elif !defined(_WIN32)
+    int serialFd_ = -1;
+    std::thread serialThread_;
+    std::vector<std::string> nativePaths_;
 #endif
 };

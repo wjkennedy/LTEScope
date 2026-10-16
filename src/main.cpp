@@ -163,8 +163,8 @@ static void render_frame()
         }
     }
     drawAbout(app);
-#ifdef HAS_LTE
     drawLte(app);
+#ifdef HAS_LTE
     drawLteUes(app);
     drawLteTraffic(app);
     drawLteCalls(app);
@@ -274,6 +274,7 @@ int main(int, char**)
     buildWindow(app.viewA, kFftSizes[app.fftSizeIdx], app.dbMin);
     buildWindow(app.viewB, kFftSizes[app.fftSizeIdx], app.dbMin);
     app.devices = app.sdr.listDevices();
+    app.espDevices = app.espSdr.listDevices();
 #ifndef __EMSCRIPTEN__
     app.verCheck.start("ltescope", CELLSCOPE_VERSION);
 #endif

@@ -175,14 +175,29 @@ static const LteSweepPreset kLteSweepPresets[] = {
     {"LTE 900 / D", 925.0},
     {"LTE 900 / E", 938.0},
     {"LTE 900 / F", 947.0},
+    {"LTE Band 2 / low", 1930.0},
+    {"LTE Band 2 / mid", 1960.0},
+    {"LTE Band 2 / high", 1990.0},
+    {"LTE Band 4/66 / low", 2110.0},
+    {"LTE Band 4/66 / mid", 2140.0},
+    {"LTE Band 66 / high", 2180.0},
 };
 
 static std::vector<double> buildLteSweepCenters(const App& app)
 {
     std::vector<double> centers;
-    double maxMHz = app.sdr.tunerMaxFreq() > 0.0 ? app.sdr.tunerMaxFreq() / 1e6 : 0.0;
+    double minMHz = 0.0;
+    double maxMHz = 0.0;
+    if (app.sourceMode == 0 || app.sourceMode == 4)
+        maxMHz = app.sdr.tunerMaxFreq() > 0.0 ? app.sdr.tunerMaxFreq() / 1e6 : 0.0;
+    else if (app.sourceMode == 7) {
+        minMHz = app.espSdr.minFreq() > 0.0 ? app.espSdr.minFreq() / 1e6 : 0.0;
+        maxMHz = app.espSdr.maxFreq() > 0.0 ? app.espSdr.maxFreq() / 1e6 : 0.0;
+    }
     auto addUnique = [&](double mhz) {
         if (mhz <= 0.0)
+            return;
+        if (minMHz > 0.0 && mhz < minMHz)
             return;
         if (maxMHz > 0.0 && mhz > maxMHz)
             return;
@@ -232,8 +247,6 @@ static bool tickLteSweep(App& app)
 #else
     if (!app.lteSweepEnabled || !app.lteRunning)
         return false;
-    if (app.sourceMode != 0)
-        return false;
     if (!app.active || !app.active->running())
         return false;
 
@@ -274,6 +287,12 @@ static bool tickLteSweep(App& app)
     if (app.lteEngine.running())
         app.lteEngine.stop();
     retuneActive(app, nextMHz);
+    if (!app.active->running()) {
+        app.lteSweepEnabled = false;
+        resetLteSweep(app);
+        app.status = "LTE sweep retune failed";
+        return false;
+    }
 
     lte::EngineConfig cfg;
     cfg.input_sample_rate_hz = app.active->sampleRate();
@@ -417,9 +436,7 @@ void drawControls(App& app)
 #ifdef HAS_LIBRESDR
             {"LibreSDR", 6},
 #endif
-#ifdef __EMSCRIPTEN__
             {"ESP-SDR board", 7},
-#endif
         };
         const int nOpts = (int)(sizeof(opts) / sizeof(opts[0]));
         const char* cur = "RTL-SDR";
@@ -431,12 +448,20 @@ void drawControls(App& app)
                 if (ImGui::Selectable(opts[i].label, opts[i].mode == app.sourceMode))
                 {
                     app.sourceMode = opts[i].mode;
-#ifdef __EMSCRIPTEN__
                     if (app.sourceMode == 7 &&
                         (app.centerFreqMHz < 1800.0 || app.centerFreqMHz > 2800.0))
                     {
                         app.centerFreqMHz = 1960.0;
                         app.viewA.resetView = true;
+                    }
+#ifdef HAS_LTE
+                    if (app.sourceMode == 7 &&
+                        (app.lteSweepStopMHz < 1800.0 || app.lteSweepStartMHz > 2209.0))
+                    {
+                        app.lteSweepStartMHz = 1930.0;
+                        app.lteSweepStopMHz = 1990.0;
+                        app.lteSweepStepMHz = 1.0;
+                        resetLteSweep(app);
                     }
 #endif
                 }
@@ -625,23 +650,40 @@ void drawControls(App& app)
                         app.wav.channels(), app.wav.bits(), app.wav.sampleRate() / 1e3);
         }
     }
-#ifdef __EMSCRIPTEN__
     else if (app.sourceMode == 7)
     {
-        static const char* espRateLabels[] = {"250", "125", "62.5", "31.25", "15.625"};
-        static const double espRates[] = {250000.0, 125000.0, 62500.0, 31250.0, 15625.0};
+        static const char* espRateLabels[] = {"250", "125", "62.5", "31.25", "15.625", "500 (IQ4 experimental)", "2000 (IQ1 experimental)"};
+        static const double espRates[] = {250000.0, 125000.0, 62500.0, 31250.0, 15625.0, 500000.0, 2000000.0};
 
-        ImGui::TextWrapped("LTEScope receive-only ESP-SDR firmware (Web Serial)");
+        ImGui::TextWrapped("LTEScope receive-only ESP-SDR firmware");
+#ifdef __EMSCRIPTEN__
+        ImGui::TextDisabled("Transport: Web Serial");
+#else
+        if (ImGui::Button("Refresh serial devices"))
+            app.espDevices = app.espSdr.listDevices();
+        ImGui::SameLine();
+        ImGui::Text("(%d found)", (int)app.espDevices.size());
+        if (!app.espDevices.empty()) {
+            app.espDeviceIndex = std::max(0, std::min(app.espDeviceIndex, (int)app.espDevices.size() - 1));
+            const auto& selected = app.espDevices[(size_t)app.espDeviceIndex];
+            if (ImGui::BeginCombo("Serial device", selected.serial.c_str())) {
+                for (int i = 0; i < (int)app.espDevices.size(); ++i)
+                    if (ImGui::Selectable(app.espDevices[(size_t)i].serial.c_str(), i == app.espDeviceIndex))
+                        app.espDeviceIndex = i;
+                ImGui::EndCombo();
+            }
+        } else ImGui::TextDisabled("No serial devices. Click Refresh.");
+#endif
         ImGui::TextDisabled("T-Display S3: continuous native USB. Heltec V3 / CYD: gapped UART snapshots.");
         ImGui::TextDisabled("Board displays are not driven; spectrum and waterfall appear in this app.");
-        ImGui::TextDisabled("Spectrum monitoring only; snapshot streams cannot feed LTE decode.");
+        ImGui::TextDisabled("LTE decode remains available for experimental undersampled/snapshot tests.");
         if (ImGui::InputDouble("Center (MHz)", &app.centerFreqMHz, 0.1, 1.0, "%.4f"))
         {
             app.viewA.resetView = true;
             if (running) app.espSdr.setCenterFreq(app.centerFreqMHz * 1e6);
         }
         if ((app.espSdr.firmwareName().empty() || app.espSdr.continuous()) &&
-            ImGui::Combo("Sample rate (kS/s)", &app.espSampleRateIdx, espRateLabels, 5))
+            ImGui::Combo("Sample rate (kS/s)", &app.espSampleRateIdx, espRateLabels, 7))
         {
             app.viewA.resetView = true;
             if (running) app.espSdr.setSampleRate(espRates[app.espSampleRateIdx]);
@@ -664,7 +706,6 @@ void drawControls(App& app)
             ImGui::TextDisabled("Firmware: %s", app.espSdr.firmwareName().c_str());
         ImGui::TextDisabled("Experimental divider mode covers roughly 1842-2209 MHz; Band 2 DL is 1930-1990 MHz.");
     }
-#endif
 #ifndef __EMSCRIPTEN__
     else if (app.sourceMode == 2)
     {
@@ -1869,6 +1910,10 @@ void drawLte(App& app)
     return;
 #else
     const bool srcRunning = app.active && app.active->running();
+    if (srcRunning && app.active->sampleRate() < 1.92e6)
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f),
+                           "Experimental undersampled input: %.3f MS/s (decoder nominal: 1.920 MS/s).",
+                           app.active->sampleRate() / 1e6);
     if (!app.lteRunning)
     {
         ImGui::BeginDisabled(!srcRunning);
@@ -1931,11 +1976,13 @@ void drawLte(App& app)
     ImGui::Separator();
     if (ImGui::Checkbox("Sweep LTE frequencies", &app.lteSweepEnabled))
         resetLteSweep(app);
-    if (app.sourceMode != 0)
-        ImGui::TextDisabled("Sweep currently only retunes RTL-SDR.");
+    if (app.sourceMode == 1)
+        ImGui::TextDisabled("A WAV file cannot be retuned; sweep will only relabel its center.");
+    else if (app.sourceMode == 7)
+        ImGui::TextDisabled("ESP-SDR sweep is experimental; each step restarts its serial IQ stream.");
     if (!app.lteSweepEnabled)
         resetLteSweep(app);
-    ImGui::BeginDisabled(app.sourceMode != 0);
+    ImGui::BeginDisabled(app.sourceMode == 1);
     static const char* kSweepModeLabels[] = {
         "Range only",
         "Presets only",
@@ -2315,6 +2362,27 @@ void drawLteCalls(App& app)
 
     ImGui::End();
 }
+#else
+void drawLte(App& app)
+{
+    if (!app.showLte) return;
+    ImGui::Begin((std::string(_L("LTE")) + "###LTE").c_str(), &app.showLte);
+    ImGui::TextWrapped("LTE decoding capability");
+    ImGui::Separator();
+    ImGui::BeginDisabled(true);
+    ImGui::Button("Start LTE decode");
+    ImGui::SameLine();
+    ImGui::Text("State: backend unavailable");
+    ImGui::Text("Cell search / PCI / MIB / SIB1");
+    ImGui::Text("UE activity and RNTI watch list");
+    ImGui::Text("Downlink traffic and call timeline");
+    ImGui::EndDisabled();
+    ImGui::Spacing();
+    ImGui::TextWrapped("This browser build displays the complete radio sources, spectrum, and waterfall. "
+                       "The srsRAN/FFTW WebAssembly backend is the remaining decoder port; native builds "
+                       "provide the working LTE engine today.");
+    ImGui::End();
+}
 #endif // HAS_LTE
 
 // ---------------------------------------------------------------------------
@@ -2353,8 +2421,8 @@ void drawDockHost(App& app)
         {
             if (ImGui::MenuItem(_L("Reset Layout")))
                 app.forceDefaultLayout = true;
-#ifdef HAS_LTE
             ImGui::MenuItem(_L("LTE"), nullptr, &app.showLte);
+#ifdef HAS_LTE
             ImGui::MenuItem(_L("Raw Debug"), nullptr, &app.showRawDebug);
 #endif
             ImGui::EndMenu();
