@@ -9,6 +9,9 @@
 #include "util/log.h"
 #include "version.h"
 #include "gui/waterfall.h"
+#ifdef HAS_LTE
+#include "lte/lte_diag.h"
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -60,6 +63,8 @@ void startActive(App& app)
 #endif
     std::string err;
     bool ok = false;
+    bool tuneWarn = false;
+    std::string tuneWarnMsg;
 
     if (app.sourceMode == 0)
     {
@@ -92,6 +97,7 @@ void startActive(App& app)
         app.wav.setCenterFreq(app.centerFreqMHz * 1e6);
         ok = app.wav.start(0, cb, err);
     }
+#ifndef __EMSCRIPTEN__
     else if (app.sourceMode == 2)
     {
         app.active = &app.server;
@@ -113,6 +119,7 @@ void startActive(App& app)
             }
         }
     }
+#endif
     else if (app.sourceMode == 3)
     {
         app.active = &app.hack;
@@ -157,9 +164,41 @@ void startActive(App& app)
         ok = app.libre.start(app.deviceIndex, cb, err);
     }
 #endif
+#ifdef __EMSCRIPTEN__
+    else if (app.sourceMode == 7)
+    {
+        static const double espRates[] = {250000.0, 125000.0, 62500.0, 31250.0, 15625.0};
+        app.active = &app.espSdr;
+        int rateIdx = std::max(0, std::min(app.espSampleRateIdx, 4));
+        app.espSdr.setSampleRate(espRates[rateIdx]);
+        app.espSdr.setCenterFreq(app.centerFreqMHz * 1e6);
+        app.espSdr.setGain(app.espAutoGain ? -1.0 : (double)app.espGainIndex);
+        app.espSdr.setPpm((double)app.espPpm);
+        app.espSdr.setDcBlock(app.dcBlock);
+        ok = app.espSdr.start(0, cb, err);
+    }
+#endif
 
     if (ok)
     {
+#ifndef __EMSCRIPTEN__
+        if (app.sourceMode == 0 || app.sourceMode == 4)
+        {
+            double requested = (app.sourceMode == 4 ? app.centerFreqMHz : app.centerFreqMHz) * 1e6;
+            double actual = app.sdr.actualCenterFreq();
+            if (actual <= 0.0 || std::fabs(actual - requested) > 250e3)
+            {
+#ifdef HAS_LTE
+                cellscope::lte::diagLog("RTL-SDR tune warning requested=" + std::to_string(requested) +
+                                        " actual=" + std::to_string(actual) +
+                                        " tuner=" + app.sdr.tunerType());
+#endif
+                tuneWarn = true;
+                tuneWarnMsg = "RTL-SDR tune warning: tuner did not lock requested frequency";
+            }
+        }
+#endif
+#ifndef __EMSCRIPTEN__
         // Dual RTL mode: start second RTL with independent tuning
         bool startedB = false;
         if (app.sourceMode == 4)
@@ -187,13 +226,25 @@ void startActive(App& app)
             startedB = app.sdrB.start(app.deviceIndexB, cbB, errB);
             if (startedB)
             {
+                double requestedB = app.centerFreqMHzB * 1e6;
+                double actualB = app.sdrB.actualCenterFreq();
+                if (actualB <= 0.0 || std::fabs(actualB - requestedB) > 250e3)
+                {
+#ifdef HAS_LTE
+                    cellscope::lte::diagLog("RTL-SDR B tune warning requested=" + std::to_string(requestedB) +
+                                            " actual=" + std::to_string(actualB) +
+                                            " tuner=" + app.sdrB.tunerType());
+#endif
+                    tuneWarn = true;
+                    tuneWarnMsg = "RTL-SDR B tune warning: tuner did not lock requested frequency";
+                }
                 app.decodersB.removeAll();
                 app.decodersB.configure(app.sdrB.sampleRate(), app.sdrB.centerFreq());
                 app.decodersB.setMaxWorkers(2);
                 app.decodersB.start();
             }
             else
-                app.status = "Dual RTL B error: " + errB;
+            app.status = "Dual RTL B error: " + errB;
         }
         app.dualMode = startedB;
 
@@ -221,6 +272,10 @@ void startActive(App& app)
             app.savedDecoders.clear();
             app.savedDecodersB.clear();
         }
+#else
+        app.dualMode = false;
+        app.status = "Running";
+#endif
     }
 
     // If the IQ recorder was active, restart it with the new sample rate
@@ -234,8 +289,8 @@ void startActive(App& app)
     }
 
     if (ok)
-        app.status = app.dualMode ? "Running (dual SDR)" : "Running";
+        app.status = tuneWarn ? (app.dualMode ? "Running (dual SDR): " : "Running: ") + tuneWarnMsg
+                              : (app.dualMode ? "Running (dual SDR)" : "Running");
     else
         app.status = "Error: " + err;
 }
-

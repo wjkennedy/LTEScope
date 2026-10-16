@@ -3,6 +3,8 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "implot.h"
+#include <cmath>
+#include <complex>
 #include <GLFW/glfw3.h>
 #include "core/app.h"
 #include "core/main_funcs.h"
@@ -14,8 +16,6 @@
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
-#include <cmath>
-#include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -32,8 +32,25 @@
 #include <windows.h>
 #include <shellapi.h>
 #endif
+#ifdef HAS_LTE
+#include "lte/lte_diag.h"
+#endif
 
 namespace {
+static ColorPalette paletteFromIndex(int idx)
+{
+    if (idx < 0 || idx >= kColorPaletteCount)
+        return ColorPalette::Classic;
+    return (ColorPalette)idx;
+}
+
+static ImVec4 paletteLineColor(int idx)
+{
+    uint8_t r, g, b;
+    Waterfall::colorForPalette(paletteFromIndex(idx), 0.82f, r, g, b);
+    return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+}
+
 #ifdef HAS_LTE
 struct RawDebugState
 {
@@ -122,6 +139,156 @@ static void clearRawDebugFeed()
     advanceTailToEnd("cellscope_lte.log", state.lteOffset);
     advanceTailToEnd("cellscope_raw.log", state.rawOffset);
 }
+
+static uint64_t nowMs()
+{
+    using namespace std::chrono;
+    return (uint64_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+static void resetLteSweep(App& app)
+{
+    app.lteSweepInitialized = false;
+    app.lteSweepCurrentMHz = 0.0;
+    app.lteSweepIndex = 0;
+    app.lteSweepLastStepMs = 0.0;
+}
+
+struct LteSweepPreset
+{
+    const char* label;
+    double mhz;
+};
+
+static const LteSweepPreset kLteSweepPresets[] = {
+    {"LTE 700 / A", 728.0},
+    {"LTE 700 / B", 746.0},
+    {"LTE 700 / C", 758.0},
+    {"LTE 700 / D", 782.0},
+    {"LTE 800", 806.0},
+    {"LTE 850 / A", 836.0},
+    {"LTE 850 / B", 851.0},
+    {"LTE 850 / C", 869.0},
+    {"LTE 900 / A", 881.0},
+    {"LTE 900 / B", 894.0},
+    {"LTE 900 / C", 905.0},
+    {"LTE 900 / D", 925.0},
+    {"LTE 900 / E", 938.0},
+    {"LTE 900 / F", 947.0},
+};
+
+static std::vector<double> buildLteSweepCenters(const App& app)
+{
+    std::vector<double> centers;
+    double maxMHz = app.sdr.tunerMaxFreq() > 0.0 ? app.sdr.tunerMaxFreq() / 1e6 : 0.0;
+    auto addUnique = [&](double mhz) {
+        if (mhz <= 0.0)
+            return;
+        if (maxMHz > 0.0 && mhz > maxMHz)
+            return;
+        for (double existing : centers)
+        {
+            if (std::fabs(existing - mhz) < 0.001)
+                return;
+        }
+        centers.push_back(mhz);
+    };
+
+    auto addRange = [&]() {
+        double startMHz = app.lteSweepStartMHz;
+        double stopMHz = app.lteSweepStopMHz;
+        if (stopMHz < startMHz)
+            std::swap(startMHz, stopMHz);
+        if (maxMHz > 0.0)
+            stopMHz = std::min(stopMHz, maxMHz);
+        double stepMHz = app.lteSweepStepMHz > 0.0 ? app.lteSweepStepMHz : 1.0;
+        for (double mhz = startMHz; mhz <= stopMHz + 1e-9; mhz += stepMHz)
+            addUnique(mhz);
+    };
+
+    auto addPresets = [&]() {
+        for (auto& p : kLteSweepPresets)
+            addUnique(p.mhz);
+    };
+
+    switch (app.lteSweepMode)
+    {
+        case 0: addRange(); break;
+        case 1: addPresets(); break;
+        default:
+            addPresets();
+            addRange();
+            break;
+    }
+
+    return centers;
+}
+
+static bool tickLteSweep(App& app)
+{
+#ifdef __EMSCRIPTEN__
+    (void)app;
+    return false;
+#else
+    if (!app.lteSweepEnabled || !app.lteRunning)
+        return false;
+    if (app.sourceMode != 0)
+        return false;
+    if (!app.active || !app.active->running())
+        return false;
+
+    namespace lte = cellscope::lte;
+    if (app.lteEngine.state() == lte::EngineState::CellFound)
+    {
+        app.lteSweepEnabled = false;
+        resetLteSweep(app);
+        app.status = "LTE sweep locked a cell";
+        return false;
+    }
+
+    uint64_t now = nowMs();
+    if (app.lteSweepInitialized && app.lteSweepLastStepMs > 0.0 &&
+        (double)(now - (uint64_t)app.lteSweepLastStepMs) < app.lteSweepDwellMs)
+    {
+        return false;
+    }
+
+    std::vector<double> centers = buildLteSweepCenters(app);
+    if (centers.empty())
+    {
+        app.lteSweepEnabled = false;
+        resetLteSweep(app);
+        app.status = "LTE sweep has no candidates";
+        return false;
+    }
+    if (app.lteSweepIndex >= centers.size())
+    {
+        app.lteSweepEnabled = false;
+        resetLteSweep(app);
+        app.status = "LTE sweep exhausted";
+        return false;
+    }
+
+    double nextMHz = centers[app.lteSweepIndex++];
+
+    if (app.lteEngine.running())
+        app.lteEngine.stop();
+    retuneActive(app, nextMHz);
+
+    lte::EngineConfig cfg;
+    cfg.input_sample_rate_hz = app.active->sampleRate();
+    cfg.center_freq_mhz      = nextMHz;
+    cfg.nof_rx_antennas      = 1;
+    app.lteEngine.start(cfg);
+
+    app.lteSweepInitialized = true;
+    app.lteSweepCurrentMHz = nextMHz;
+    app.lteSweepLastStepMs = (double)now;
+    app.status = "LTE sweep: " + std::to_string(nextMHz) + " MHz";
+    cellscope::lte::diagLog("LTE sweep retune center_mhz=" + std::to_string(nextMHz));
+    return true;
+#endif
+}
 #endif
 } // namespace
 
@@ -133,6 +300,55 @@ static void clearRawDebugFeed()
 // touched from the render thread.
 static void beginStartActive(App& app)
 {
+#ifdef __EMSCRIPTEN__
+    if (app.sourceMode == 0)
+    {
+        if (app.startThread.joinable())
+            app.startThread.join();
+
+        app.status = "Connecting WebUSB RTL-SDR...";
+        app.startErr.clear();
+        app.startReady.store(false);
+        app.starting.store(true);
+
+        std::string err;
+        bool ok = app.sdr.beginBrowserPrepare(app.deviceIndex,
+            [&app](bool browserOk, const std::string& browserErr) {
+                app.startErr = browserOk ? std::string() : browserErr;
+                app.startReady.store(true);
+            },
+            err);
+        if (!ok)
+        {
+            app.status = "Error: " + err;
+            app.starting.store(false);
+        }
+        return;
+    }
+    if (app.sourceMode == 7)
+    {
+        if (app.startThread.joinable())
+            app.startThread.join();
+
+        app.status = "Connecting Web Serial ESP-SDR...";
+        app.startErr.clear();
+        app.startReady.store(false);
+        app.starting.store(true);
+
+        std::string err;
+        bool ok = app.espSdr.beginBrowserPrepare(0,
+            [&app](bool browserOk, const std::string& browserErr) {
+                app.startErr = browserOk ? std::string() : browserErr;
+                app.startReady.store(true);
+            }, err);
+        if (!ok)
+        {
+            app.starting.store(false);
+            app.status = "Error: " + err;
+        }
+        return;
+    }
+#endif
 #ifdef HAS_LIBRESDR
     if (app.sourceMode == 6)
     {
@@ -190,13 +406,19 @@ void drawControls(App& app)
         // which optional backends are compiled in.
         struct SrcOpt { const char* label; int mode; };
         static const SrcOpt opts[] = {
-            {"RTL-SDR", 0}, {"WAV file", 1}, {"SDR++ Server", 2},
+            {"RTL-SDR", 0}, {"WAV file", 1},
+#ifndef __EMSCRIPTEN__
+            {"SDR++ Server", 2},
+#endif
             {"HackRF", 3}, {"Dual RTL", 4},
 #ifdef HAS_AIRSPY
             {"Airspy", 5},
 #endif
 #ifdef HAS_LIBRESDR
             {"LibreSDR", 6},
+#endif
+#ifdef __EMSCRIPTEN__
+            {"ESP-SDR board", 7},
 #endif
         };
         const int nOpts = (int)(sizeof(opts) / sizeof(opts[0]));
@@ -207,7 +429,17 @@ void drawControls(App& app)
         {
             for (int i = 0; i < nOpts; ++i)
                 if (ImGui::Selectable(opts[i].label, opts[i].mode == app.sourceMode))
+                {
                     app.sourceMode = opts[i].mode;
+#ifdef __EMSCRIPTEN__
+                    if (app.sourceMode == 7 &&
+                        (app.centerFreqMHz < 1800.0 || app.centerFreqMHz > 2800.0))
+                    {
+                        app.centerFreqMHz = 1960.0;
+                        app.viewA.resetView = true;
+                    }
+#endif
+                }
             ImGui::EndCombo();
         }
     }
@@ -217,15 +449,18 @@ void drawControls(App& app)
 
     if (starting)
     {
+        const bool espSdrStarting = app.sourceMode == 7;
         ImGui::BeginDisabled(true);
         ImGui::Button(_L("Start"), ImVec2(120, 0));
         ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "%s", _L("Initializing LibreSDR"));
-        // Indeterminate animated bar: UHD's multi_usrp::make() gives no progress,
-        // so a negative fraction drives ImGui's scrolling "busy" animation.
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "%s",
+                           espSdrStarting ? "Connecting ESP-SDR" : _L("Initializing LibreSDR"));
+        // Both UHD initialization and the browser serial handshake are
+        // asynchronous and provide no useful fractional progress.
         ImGui::ProgressBar(-1.0f * (float)ImGui::GetTime(), ImVec2(-FLT_MIN, 0.0f),
-                           _L("Loading firmware + FPGA..."));
+                           espSdrStarting ? "Waiting for Web Serial handshake..."
+                                          : _L("Loading firmware + FPGA..."));
     }
     else if (!running)
     {
@@ -390,6 +625,47 @@ void drawControls(App& app)
                         app.wav.channels(), app.wav.bits(), app.wav.sampleRate() / 1e3);
         }
     }
+#ifdef __EMSCRIPTEN__
+    else if (app.sourceMode == 7)
+    {
+        static const char* espRateLabels[] = {"250", "125", "62.5", "31.25", "15.625"};
+        static const double espRates[] = {250000.0, 125000.0, 62500.0, 31250.0, 15625.0};
+
+        ImGui::TextWrapped("LTEScope receive-only ESP-SDR firmware (Web Serial)");
+        ImGui::TextDisabled("T-Display S3: continuous native USB. Heltec V3 / CYD: gapped UART snapshots.");
+        ImGui::TextDisabled("Board displays are not driven; spectrum and waterfall appear in this app.");
+        ImGui::TextDisabled("Spectrum monitoring only; snapshot streams cannot feed LTE decode.");
+        if (ImGui::InputDouble("Center (MHz)", &app.centerFreqMHz, 0.1, 1.0, "%.4f"))
+        {
+            app.viewA.resetView = true;
+            if (running) app.espSdr.setCenterFreq(app.centerFreqMHz * 1e6);
+        }
+        if ((app.espSdr.firmwareName().empty() || app.espSdr.continuous()) &&
+            ImGui::Combo("Sample rate (kS/s)", &app.espSampleRateIdx, espRateLabels, 5))
+        {
+            app.viewA.resetView = true;
+            if (running) app.espSdr.setSampleRate(espRates[app.espSampleRateIdx]);
+        }
+        if (!app.espSdr.firmwareName().empty() && !app.espSdr.continuous())
+            ImGui::TextDisabled("Capture: 16 MS/s IQ8 snapshots with transfer gaps");
+        if (ImGui::Checkbox("Auto gain (AGC)##esp", &app.espAutoGain) && running)
+            app.espSdr.setGain(app.espAutoGain ? -1.0 : (double)app.espGainIndex);
+        if (!app.espAutoGain)
+        {
+            int maxGain = std::max(1, app.espSdr.maxGainIndex());
+            if (ImGui::SliderInt("PHY gain index", &app.espGainIndex, 0, maxGain) && running)
+                app.espSdr.setGain((double)app.espGainIndex);
+        }
+        if (ImGui::InputFloat("PPM##esp", &app.espPpm, 0.1f, 1.0f, "%.2f") && running)
+            app.espSdr.setPpm((double)app.espPpm);
+        if (ImGui::Checkbox("DC block##esp", &app.dcBlock) && running)
+            app.espSdr.setDcBlock(app.dcBlock);
+        if (!app.espSdr.firmwareName().empty())
+            ImGui::TextDisabled("Firmware: %s", app.espSdr.firmwareName().c_str());
+        ImGui::TextDisabled("Experimental divider mode covers roughly 1842-2209 MHz; Band 2 DL is 1930-1990 MHz.");
+    }
+#endif
+#ifndef __EMSCRIPTEN__
     else if (app.sourceMode == 2)
     {
         // ---- SDR++ Server ----
@@ -447,6 +723,7 @@ void drawControls(App& app)
         }
         ImGui::TextDisabled("Gain and device are configured on the SDR++ server.");
     }
+#endif
     else if (app.sourceMode == 3)
     {
         // ---- HackRF (native) ----
@@ -759,6 +1036,18 @@ void drawControls(App& app)
         app.viewB.resetView = true;
     }
     ImGui::SameLine();
+    if (ImGui::Button(app.markerPlacementArmed ? _L("Cancel marker") : _L("Add marker")))
+    {
+        app.markerPlacementArmed = !app.markerPlacementArmed;
+        if (!app.markerPlacementArmed)
+            app.placingDecoder = false;
+    }
+    if (app.markerPlacementArmed)
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("click the spectrum to drop a marker");
+    }
+    ImGui::SameLine();
     ImGui::TextDisabled("drag=pan  scroll=zoom  dbl-click=fit");
 
     ImGui::BeginDisabled(app.sourceMode == 1);
@@ -834,6 +1123,14 @@ void drawControls(App& app)
             if (app.fontSize > 24) app.fontSize = 24;
         }
         ImGui::TextDisabled("  Restart to apply");
+        if (app.spectrumPalette < 0 || app.spectrumPalette >= kColorPaletteCount)
+            app.spectrumPalette = (int)ColorPalette::Classic;
+        if (app.waterfallPalette < 0 || app.waterfallPalette >= kColorPaletteCount)
+            app.waterfallPalette = (int)ColorPalette::Classic;
+        ImGui::Combo("Spectrum palette", &app.spectrumPalette,
+                     kColorPaletteLabels, kColorPaletteCount);
+        ImGui::Combo("Waterfall palette", &app.waterfallPalette,
+                     kColorPaletteLabels, kColorPaletteCount);
     }
 
     ImGui::Separator();
@@ -938,7 +1235,8 @@ void drawSpectrum(App& app, SpectrumView& v, DecoderManager& mgr, const char* ti
 
         if (v.curN > 0)
         {
-            ImPlot::PlotLine("PSD", v.freqMHz.data(), v.avg.data(), v.curN);
+            ImPlot::PlotLine("PSD", v.freqMHz.data(), v.avg.data(), v.curN,
+                             {ImPlotProp_LineColor, paletteLineColor(app.spectrumPalette)});
         }
 
         auto decs = mgr.status();
@@ -1011,24 +1309,30 @@ void drawSpectrum(App& app, SpectrumView& v, DecoderManager& mgr, const char* ti
         if (bandValid)
             v.resetView = false;
 
-        // Drag-to-place decoder: Ctrl+mousedown starts placing, move shows a white
-        // preview line through the spectrum and waterfall, release creates the decoder.
-        if (ImPlot::IsPlotHovered() && ImGui::GetIO().KeyCtrl)
+        // Drag-to-place decoder: Ctrl+mousedown starts placing, or "Add marker"
+        // arms a click-to-place mode. Move shows a red preview line through the
+        // spectrum and waterfall, release creates the placeholder decoder.
+        bool plotHovered = ImPlot::IsPlotHovered();
+        bool armed = app.markerPlacementArmed && (!app.placingDecoder || app.placingVoiceView == voiceView);
+        if (plotHovered && (ImGui::GetIO().KeyCtrl || armed))
         {
             ImPlotPoint mp = ImPlot::GetPlotMousePos();
+            if (armed && !app.placingDecoder)
+                app.placingFreqMHz = mp.x;
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 app.placingDecoder = true;
                 app.placingVoiceView = voiceView;
                 app.placingFreqMHz = mp.x;
             }
-        if (app.placingDecoder && app.placingVoiceView == voiceView)
+            if (app.placingDecoder && app.placingVoiceView == voiceView)
             {
                 app.placingFreqMHz = mp.x;
             }
             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && app.placingDecoder)
             {
                 app.placingDecoder = false;
+                app.markerPlacementArmed = false;
                 mgr.addDecoder(mp.x * 1e6, kPlaceholderBaud);
             }
         }
@@ -1036,10 +1340,12 @@ void drawSpectrum(App& app, SpectrumView& v, DecoderManager& mgr, const char* ti
         {
             // Ctrl released or cursor left the plot that started the placement.
             app.placingDecoder = false;
+            app.markerPlacementArmed = false;
         }
 
         // Drag-to-place preview line redraw
-        if (app.placingDecoder && app.placingVoiceView == voiceView)
+        if ((app.placingDecoder && app.placingVoiceView == voiceView) ||
+            (armed && plotHovered))
         {
             ImPlotRect lim = ImPlot::GetPlotLimits();
             float xMin = (float)lim.X.Min;
@@ -1098,8 +1404,8 @@ void drawSpectrum(App& app, SpectrumView& v, DecoderManager& mgr, const char* ti
 
 void drawWaterfall(App& app, SpectrumView& v, const char* title)
 {
-    (void)app;
     ImGui::Begin(title);
+    v.waterfall.setPalette(paletteFromIndex(app.waterfallPalette));
 
     float uMin = 0.0f, uMax = 1.0f;
     float xLo = 0.0f, xHi = 1.0f;
@@ -1490,6 +1796,8 @@ void drawAbout(App& app)
         ImGui::TextDisabled("  inmarsat-sniffer");
         ImGui::TextDisabled("  scytaleC (Thierry Leconte)");
         ImGui::TextDisabled("  DeDECTive (Sarah Rose)");
+        ImGui::TextDisabled("  esp-sdr-s2-range / ESPARGOS ESP-SDR (GPL-3.0-or-later)");
+        ImGui::TextDisabled("  Bruce ESP32 firmware (hardware reference, AGPL-3.0-or-later)");
         ImGui::Spacing();
         ImGui::TextWrapped("Thanks to Arclamp VK4SUS for providing a server for accessing the satellite during development.");
         ImGui::Spacing();
@@ -1554,6 +1862,12 @@ void drawLte(App& app)
 
     namespace lte = cellscope::lte;
 
+#ifdef __EMSCRIPTEN__
+    ImGui::TextWrapped("LTE decode is disabled in the browser build.");
+    ImGui::TextWrapped("Use the raw debug panel for any WebUSB / SDR diagnostics.");
+    ImGui::End();
+    return;
+#else
     const bool srcRunning = app.active && app.active->running();
     if (!app.lteRunning)
     {
@@ -1577,6 +1891,8 @@ void drawLte(App& app)
         {
             app.lteEngine.stop();
             app.lteRunning = false;
+            app.lteSweepEnabled = false;
+            resetLteSweep(app);
         }
     }
     ImGui::SameLine();
@@ -1609,6 +1925,46 @@ void drawLte(App& app)
                            ci.barred ? "   [BARRED]" : "");
     }
     ImGui::TextWrapped("%s", app.lteEngine.statusText().c_str());
+    if (app.lteEngine.state() == lte::EngineState::Searching)
+        ImGui::TextDisabled("Tip: use Add marker to place a channel marker, or open Raw Debug for logs.");
+
+    ImGui::Separator();
+    if (ImGui::Checkbox("Sweep LTE frequencies", &app.lteSweepEnabled))
+        resetLteSweep(app);
+    if (app.sourceMode != 0)
+        ImGui::TextDisabled("Sweep currently only retunes RTL-SDR.");
+    if (!app.lteSweepEnabled)
+        resetLteSweep(app);
+    ImGui::BeginDisabled(app.sourceMode != 0);
+    static const char* kSweepModeLabels[] = {
+        "Range only",
+        "Presets only",
+        "Presets + range",
+    };
+    if (ImGui::Combo("Sweep mode", &app.lteSweepMode, kSweepModeLabels, 3))
+        resetLteSweep(app);
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::InputDouble("Sweep start (MHz)", &app.lteSweepStartMHz, 0.1, 1.0, "%.3f"))
+        resetLteSweep(app);
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::InputDouble("Sweep stop (MHz)", &app.lteSweepStopMHz, 0.1, 1.0, "%.3f"))
+        resetLteSweep(app);
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::InputDouble("Sweep step (MHz)", &app.lteSweepStepMHz, 0.1, 1.0, "%.3f"))
+        resetLteSweep(app);
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::InputDouble("Sweep dwell (ms)", &app.lteSweepDwellMs, 10.0, 100.0, "%.0f"))
+        resetLteSweep(app);
+    if (app.lteSweepStepMHz <= 0.0)
+        app.lteSweepStepMHz = 1.0;
+    if (app.lteSweepDwellMs < 200.0)
+        app.lteSweepDwellMs = 200.0;
+    if (app.lteSweepStopMHz < app.lteSweepStartMHz)
+        std::swap(app.lteSweepStopMHz, app.lteSweepStartMHz);
+    const char* sweepModeText = kSweepModeLabels[std::clamp(app.lteSweepMode, 0, 2)];
+    ImGui::TextDisabled("Mode: %s", sweepModeText);
+    ImGui::TextDisabled("Current sweep center: %.3f MHz", app.lteSweepCurrentMHz);
+    ImGui::EndDisabled();
 
     // ---- Cell-wide DL throughput + active-UE count over time ----
     auto hist = app.lteEngine.history();
@@ -1662,7 +2018,9 @@ void drawLte(App& app)
     }
     ImGui::EndChild();
 
+    tickLteSweep(app);
     ImGui::End();
+#endif
 }
 
 // "UEs" panel: per-UE table sorted by current DL rate, with usage bars.

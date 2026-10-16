@@ -28,6 +28,13 @@ void DecoderManager::configure(double Fs, double centerHz)
 
 void DecoderManager::start()
 {
+#if defined(__EMSCRIPTEN__)
+    // The browser build is currently single-threaded, so keep the decoder
+    // manager inert instead of trying to spin up worker threads.
+    run_.store(false);
+    workers_.clear();
+    return;
+#else
     if (run_.load())
         return;
 
@@ -44,10 +51,16 @@ void DecoderManager::start()
         workers_.push_back(std::make_unique<Worker>());
     for (auto& w : workers_)
         w->thread = std::thread([this, wp = w.get()]() { workerLoop(wp); });
+#endif
 }
 
 void DecoderManager::stop()
 {
+#if defined(__EMSCRIPTEN__)
+    run_.store(false);
+    workers_.clear();
+    return;
+#else
     run_.store(false);
     for (auto& w : workers_)
         w->cv.notify_all();
@@ -55,10 +68,16 @@ void DecoderManager::stop()
         if (w->thread.joinable())
             w->thread.join();
     workers_.clear();
+#endif
 }
 
 void DecoderManager::feed(const float* iq, int nComplex)
 {
+#if defined(__EMSCRIPTEN__)
+    (void)iq;
+    (void)nComplex;
+    return;
+#else
     if (!run_.load())
         return;
     // One shared block — all workers reference the same memory, zero per-worker copies.
@@ -78,6 +97,7 @@ void DecoderManager::feed(const float* iq, int nComplex)
         }
         w->cv.notify_one();
     }
+#endif
 }
 
 int DecoderManager::addDecoder(double freqHz, int baud, uint32_t aesId)

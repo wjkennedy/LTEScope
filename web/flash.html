@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LTEScope board flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: #e7edf6;
+      background: radial-gradient(circle at top, #142232, #0b0f14 58%); }
+    main { width: min(980px, calc(100% - 32px)); margin: 42px auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0 0 8px; font-size: 19px; }
+    p, li { line-height: 1.5; color: #b8c3d1; }
+    .intro { max-width: 760px; }
+    .warning { margin: 22px 0; padding: 12px; border-left: 3px solid #ffbd5c;
+      background: #211c15; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; }
+    .card { display: flex; flex-direction: column; min-height: 300px; padding: 20px;
+      background: #111821; border: 1px solid #293544; border-radius: 14px; }
+    .card p { margin: 6px 0; }
+    .tag { align-self: flex-start; margin-bottom: 12px; padding: 4px 9px; border-radius: 999px;
+      color: #9edcff; background: #112a39; font-size: 12px; font-weight: 700; }
+    .tag.pending { color: #ffcf87; background: #302517; }
+    .action { margin-top: auto; padding-top: 18px; }
+    footer { margin: 24px 2px; color: #93a1b3; font-size: 14px; }
+    a { color: #5cc8ff; } code { color: #d9e9ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>LTEScope radio firmware</h1>
+    <p class="intro">Choose the exact board. T-Display S3 provides continuous
+      IQ over native USB; Heltec V3 and CYD provide gapped wideband snapshots
+      over their USB-to-serial bridges. These images do not drive the onboard
+      displays; the waterfall appears in the LTEscope app. LoRa remains an
+      independent radio path.</p>
+    <p class="warning"><strong>Experimental radio firmware:</strong> ESP-SDR uses
+      undocumented Wi-Fi-radio controls and may permanently alter analog
+      characteristics. Do not return a flashed board to a certified product.
+      The selected firmware base implements reception only.</p>
+
+    <section class="grid" aria-label="Firmware targets">
+      <article class="card">
+        <span class="tag">Onboard SX1262</span>
+        <h2>Heltec WiFi LoRa 32 V3</h2>
+        <p>Receive-only ESP-SDR snapshots over the onboard CP2102. The onboard
+          SX1262 telemetry path is reserved for the next firmware milestone.</p>
+        <p>Hold <code>PRG</code>, tap <code>RST</code>, release <code>PRG</code>, then install.</p>
+        <div class="action">
+          <esp-web-install-button manifest="firmware/heltec-v3/manifest.json"></esp-web-install-button>
+        </div>
+      </article>
+
+      <article class="card">
+        <span class="tag">External SX1262</span>
+        <h2>LilyGO T-Display S3</h2>
+        <p>Continuous receive-only IQS1 spectrum source over native USB. LoRa
+          requires an external SX1262 and is not enabled in this image yet.</p>
+        <p>Hold <code>BOOT</code>, tap <code>RESET</code>, release <code>BOOT</code>, then install.</p>
+        <div class="action">
+          <esp-web-install-button manifest="firmware/t-display-s3/manifest.json"></esp-web-install-button>
+        </div>
+      </article>
+
+      <article class="card">
+        <span class="tag">Classic ESP32 snapshots</span>
+        <h2>CYD-2432S028</h2>
+        <p>Receive-only ESP-SDR snapshots over the onboard USB-to-UART bridge.
+          Captures have gaps but cover 16 MHz instantaneously.</p>
+        <p>Hold <code>BOOT</code>, tap <code>RESET</code>, release <code>BOOT</code>, then install.</p>
+        <div class="action">
+          <esp-web-install-button manifest="firmware/cyd/manifest.json"></esp-web-install-button>
+        </div>
+      </article>
+    </section>
+
+    <footer>
+      <a href="LTEScope.html">Back to LTEScope</a> ·
+      <a href="THIRD_PARTY_NOTICES.md">Third-party notices</a><br>
+      esp-sdr-s2-range / ESPARGOS ESP-SDR: GPL-3.0-or-later. ESP Web Tools:
+      Apache-2.0. Bruce was used as an adjacent hardware-reference implementation.
+    </footer>
+  </main>
+</body>
+</html>

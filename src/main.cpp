@@ -9,8 +9,16 @@
 
 #include <GLFW/glfw3.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+#include <cmath>
+#include <complex>
+
 #include "core/app.h"
 #include "core/default_layout.h"
+#include "core/main_funcs.h"
 #include "i18n/i18n.h"
 #include "util/log.h"
 #include "version.h"
@@ -18,8 +26,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
-#include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -60,12 +66,16 @@ bool openWavDialog(char*, int) { return false; }
 #endif
 
 #if !defined(_WIN32)
+#ifndef __EMSCRIPTEN__
 static void capture_stderr_to_file()
 {
     if (std::freopen("cellscope_raw.log", "a", stderr)) {
         std::setvbuf(stderr, nullptr, _IONBF, 0);
     }
 }
+#else
+static void capture_stderr_to_file() {}
+#endif
 #endif
 
 static void glfw_error_callback(int error, const char* description)
@@ -73,9 +83,106 @@ static void glfw_error_callback(int error, const char* description)
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
 
+namespace {
+App*        g_app = nullptr;
+GLFWwindow* g_window = nullptr;
+const ImVec4 g_clear_color = ImVec4(0.06f, 0.07f, 0.09f, 1.0f);
 
-#include "core/app.h"
-#include "core/main_funcs.h"
+static void render_frame()
+{
+    App& app = *g_app;
+    GLFWwindow* window = g_window;
+
+    // Finalize an async source start (LibreSDR/UHD) once the worker thread
+    // has opened the device. Done on the GUI thread so startActive() only
+    // touches shared state (rings, decoders, active source) from here.
+    if (app.startReady.exchange(false))
+    {
+        if (app.startThread.joinable())
+            app.startThread.join();
+        if (app.startErr.empty())
+            startActive(app); // device already prepared -> returns quickly
+        else
+            app.status = "Error: " + app.startErr;
+        app.starting.store(false);
+    }
+
+    // Apply the built-in default dock layout (fresh run / version bump /
+    // Reset Layout). Done between frames as ImGui prefers.
+    if (app.forceDefaultLayout)
+    {
+        ImGui::LoadIniSettingsFromMemory(kDefaultLayoutIni);
+        app.forceDefaultLayout = false;
+    }
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    drawDockHost(app);
+
+    if (app.active->running())
+        processFft(app.viewA, app, app.active->centerFreq(), app.active->sampleRate());
+    if (app.dualMode && app.sdrB.running())
+        processFft(app.viewB, app, app.sdrB.centerFreq(), app.sdrB.sampleRate());
+
+    if (app.active->running())
+        updateRateChange(app);
+
+    // Refresh saved decoder list for persistent restart (non-8400 only)
+    if (app.saveDecoders && app.active->running())
+    {
+        app.savedDecoders.clear();
+        for (auto& st : app.decoders.status())
+            if (st.baud != 8400)
+                app.savedDecoders.push_back({st.freqMHz, st.baud});
+        app.savedDecodersB.clear();
+        for (auto& st : app.decodersB.status())
+            if (st.baud != 8400)
+                app.savedDecodersB.push_back({st.freqMHz, st.baud});
+    }
+
+    drawControls(app);
+    {
+        std::string t = std::string(_L("Spectrum")) + "###Spectrum";
+        drawSpectrum(app, app.viewA, app.decoders, t.c_str(), true, false);
+    }
+    {
+        std::string t = std::string(_L("Waterfall")) + "###Waterfall";
+        drawWaterfall(app, app.viewA, t.c_str());
+    }
+    if (app.dualMode)
+    {
+        {
+            std::string t = std::string(_L("Spectrum")) + "###Spectrum (B)";
+            drawSpectrum(app, app.viewB, app.decodersB, t.c_str(), true, true);
+        }
+        {
+            std::string t = std::string(_L("Waterfall")) + "###Waterfall (B)";
+            drawWaterfall(app, app.viewB, t.c_str());
+        }
+    }
+    drawAbout(app);
+#ifdef HAS_LTE
+    drawLte(app);
+    drawLteUes(app);
+    drawLteTraffic(app);
+    drawLteCalls(app);
+    drawRawDebug(app);
+#endif
+
+    int display_w, display_h;
+    glfwGetFramebufferSize(window, &display_w, &display_h);
+    glViewport(0, 0, display_w, display_h);
+    glClearColor(g_clear_color.x, g_clear_color.y, g_clear_color.z, g_clear_color.w);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    glfwSwapBuffers(window);
+}
+} // namespace
 
 int main(int, char**)
 {
@@ -86,7 +193,12 @@ int main(int, char**)
     if (!glfwInit())
         return 1;
 
-#if defined(__APPLE__)
+#if defined(__EMSCRIPTEN__)
+    const char* glsl_version = nullptr;
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+#elif defined(__APPLE__)
     const char* glsl_version = "#version 150";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
@@ -104,8 +216,11 @@ int main(int, char**)
         glfwTerminate();
         return 1;
     }
+    g_window = window;
     glfwMakeContextCurrent(window);
+#ifndef __EMSCRIPTEN__
     glfwSwapInterval(1);
+#endif
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -159,108 +274,25 @@ int main(int, char**)
     buildWindow(app.viewA, kFftSizes[app.fftSizeIdx], app.dbMin);
     buildWindow(app.viewB, kFftSizes[app.fftSizeIdx], app.dbMin);
     app.devices = app.sdr.listDevices();
+#ifndef __EMSCRIPTEN__
     app.verCheck.start("ltescope", CELLSCOPE_VERSION);
+#endif
     scanBandPlans(app.bandPlanDir, app.bandPlanNames, app.bandPlanPaths);
     if (app.bandPlanIdx >= 0 && app.bandPlanIdx < (int)app.bandPlanPaths.size())
         app.bandPlanLoaded = loadBandPlan(app.bandPlanPaths[app.bandPlanIdx]);
     if (app.bandPlanIdxB >= 0 && app.bandPlanIdxB < (int)app.bandPlanPaths.size())
         app.bandPlanLoadedB = loadBandPlan(app.bandPlanPaths[app.bandPlanIdxB]);
 
-    const ImVec4 clear_color = ImVec4(0.06f, 0.07f, 0.09f, 1.0f);
-
+    g_app = &app;
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop(render_frame, 0, true);
+#else
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-
-        // Finalize an async source start (LibreSDR/UHD) once the worker thread
-        // has opened the device. Done on the GUI thread so startActive() only
-        // touches shared state (rings, decoders, active source) from here.
-        if (app.startReady.exchange(false))
-        {
-            if (app.startThread.joinable())
-                app.startThread.join();
-            if (app.startErr.empty())
-                startActive(app); // device already prepared -> returns quickly
-            else
-                app.status = "Error: " + app.startErr;
-            app.starting.store(false);
-        }
-
-        // Apply the built-in default dock layout (fresh run / version bump /
-        // Reset Layout). Done between frames as ImGui prefers.
-        if (app.forceDefaultLayout)
-        {
-            ImGui::LoadIniSettingsFromMemory(kDefaultLayoutIni);
-            app.forceDefaultLayout = false;
-        }
-
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        drawDockHost(app);
-
-        if (app.active->running())
-            processFft(app.viewA, app, app.active->centerFreq(), app.active->sampleRate());
-        if (app.dualMode && app.sdrB.running())
-            processFft(app.viewB, app, app.sdrB.centerFreq(), app.sdrB.sampleRate());
-
-        if (app.active->running())
-            updateRateChange(app);
-
-        // Refresh saved decoder list for persistent restart (non-8400 only)
-        if (app.saveDecoders && app.active->running())
-        {
-            app.savedDecoders.clear();
-            for (auto& st : app.decoders.status())
-                if (st.baud != 8400)
-                    app.savedDecoders.push_back({st.freqMHz, st.baud});
-            app.savedDecodersB.clear();
-            for (auto& st : app.decodersB.status())
-                if (st.baud != 8400)
-                    app.savedDecodersB.push_back({st.freqMHz, st.baud});
-        }
-
-        drawControls(app);
-        {
-            std::string t = std::string(_L("Spectrum")) + "###Spectrum";
-            drawSpectrum(app, app.viewA, app.decoders, t.c_str(), true, false);
-        }
-        {
-            std::string t = std::string(_L("Waterfall")) + "###Waterfall";
-            drawWaterfall(app, app.viewA, t.c_str());
-        }
-        if (app.dualMode)
-        {
-            {
-                std::string t = std::string(_L("Spectrum")) + "###Spectrum (B)";
-                drawSpectrum(app, app.viewB, app.decodersB, t.c_str(), true, true);
-            }
-            {
-                std::string t = std::string(_L("Waterfall")) + "###Waterfall (B)";
-                drawWaterfall(app, app.viewB, t.c_str());
-            }
-        }
-        drawAbout(app);
-#ifdef HAS_LTE
-        drawLte(app);
-        drawLteUes(app);
-        drawLteTraffic(app);
-        drawLteCalls(app);
-        drawRawDebug(app);
-#endif
-
-        int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glfwSwapBuffers(window);
+        render_frame();
     }
+#endif
 
     // Persist settings + dock layout to cellscope.ini before shutting down.
     ImGui::SaveIniSettingsToDisk(io.IniFilename);
@@ -273,7 +305,9 @@ int main(int, char**)
     app.sdr.stop();
     app.sdrB.stop();
     app.wav.stop();
+#ifndef __EMSCRIPTEN__
     app.server.stop();
+#endif
     app.hack.stop();
 #ifdef HAS_LTE
     app.lteEngine.stop();

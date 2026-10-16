@@ -1,0 +1,14 @@
+{
+  "name": "LTEScope — LilyGO T-Display S3",
+  "version": "0.3.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "serialType": "cdc",
+      "parts": [
+        { "path": "ltescope-t-display-s3.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

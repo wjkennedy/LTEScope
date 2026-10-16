@@ -15,6 +15,15 @@ else()
     set(CELLSCOPE_LTE_DEFAULT ON)
 endif()
 
+if(EMSCRIPTEN)
+    # CMake records Emscripten's raw sysroot include dir as an implicit system
+    # path, which forces libc++'s C headers ahead of the C++ wrappers and
+    # breaks <cmath>/<complex>. Keep the compiler's own search order and let
+    # em++ provide the headers naturally.
+    list(FILTER CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES EXCLUDE REGEX "/sysroot/include$")
+    list(FILTER CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES EXCLUDE REGEX "/sysroot/include$")
+endif()
+
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
@@ -23,35 +32,42 @@ find_package(PkgConfig)
 include(FetchContent)
 
 set(GLFW_FOUND FALSE)
-find_package(glfw3 CONFIG QUIET)
-if(glfw3_FOUND)
+if(EMSCRIPTEN)
     set(GLFW_FOUND TRUE)
-elseif(PkgConfig_FOUND)
-    pkg_check_modules(GLFW QUIET glfw3)
-    if(GLFW_FOUND)
+    set(GLFW_INCLUDE_DIRS "")
+    set(GLFW_LIBRARIES "")
+    message(STATUS "Using Emscripten-provided GLFW/WebGL runtime")
+else()
+    find_package(glfw3 CONFIG QUIET)
+    if(glfw3_FOUND)
+        set(GLFW_FOUND TRUE)
+    elseif(PkgConfig_FOUND)
+        pkg_check_modules(GLFW QUIET glfw3)
+        if(GLFW_FOUND)
+            set(GLFW_FOUND TRUE)
+        endif()
+    endif()
+    if(NOT GLFW_FOUND)
+        find_path(GLFW_INCLUDE_DIRS NAMES GLFW/glfw3.h
+            PATHS /opt/homebrew/opt/glfw /usr/local/opt/glfw /opt/local)
+        find_library(GLFW_LIBRARIES NAMES glfw3 glfw
+            PATHS /opt/homebrew/opt/glfw/lib /usr/local/opt/glfw/lib /opt/local/lib)
+        if(GLFW_INCLUDE_DIRS AND GLFW_LIBRARIES)
+            set(GLFW_FOUND TRUE)
+        endif()
+    endif()
+    if(NOT GLFW_FOUND)
+        message(STATUS "GLFW package not found; fetching glfw 3.4 from source archive")
+        set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(glfw
+            URL https://github.com/glfw/glfw/releases/download/3.4/glfw-3.4.zip
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        FetchContent_MakeAvailable(glfw)
         set(GLFW_FOUND TRUE)
     endif()
-endif()
-if(NOT GLFW_FOUND)
-    find_path(GLFW_INCLUDE_DIRS NAMES GLFW/glfw3.h
-        PATHS /opt/homebrew/opt/glfw /usr/local/opt/glfw /opt/local)
-    find_library(GLFW_LIBRARIES NAMES glfw3 glfw
-        PATHS /opt/homebrew/opt/glfw/lib /usr/local/opt/glfw/lib /opt/local/lib)
-    if(GLFW_INCLUDE_DIRS AND GLFW_LIBRARIES)
-        set(GLFW_FOUND TRUE)
-    endif()
-endif()
-if(NOT GLFW_FOUND)
-    message(STATUS "GLFW package not found; fetching glfw 3.4 from source archive")
-    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(glfw
-        URL https://github.com/glfw/glfw/releases/download/3.4/glfw-3.4.zip
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-    FetchContent_MakeAvailable(glfw)
-    set(GLFW_FOUND TRUE)
 endif()
 
 # RTL-SDR
@@ -162,38 +178,76 @@ if(HAS_LTE)
 endif()
 
 # ---------------------------------------------------------------------------
-# Dear ImGui + ImPlot (vendored) compiled as a static lib
+# Dear ImGui + ImPlot (vendored)
 # ---------------------------------------------------------------------------
-add_library(imgui STATIC
-    ${IMGUI_DIR}/imgui.cpp
-    ${IMGUI_DIR}/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/imgui_demo.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
-    ${IMPLOT_DIR}/implot.cpp
-    ${IMPLOT_DIR}/implot_items.cpp
-)
-target_include_directories(imgui PUBLIC
-    ${IMGUI_DIR}
-    ${IMGUI_DIR}/backends
-    ${IMPLOT_DIR}
-)
-# implot_items.cpp is extremely template-heavy: ~5 min to compile at -O2.
-# It is not performance-critical for us, so build it at -O1 (~1 min). The last
-# -O flag wins in GCC, so this overrides the RelWithDebInfo -O2.
-set_source_files_properties(${IMPLOT_DIR}/implot_items.cpp PROPERTIES COMPILE_OPTIONS "-O1")
-if(APPLE)
-    target_compile_definitions(imgui PUBLIC GL_SILENCE_DEPRECATION)
-endif()
-target_link_libraries(imgui PUBLIC OpenGL::GL)
-if(TARGET glfw)
-    target_link_libraries(imgui PUBLIC glfw)
+if(EMSCRIPTEN)
+    add_library(imgui_objs OBJECT
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+        ${IMPLOT_DIR}/implot.cpp
+        ${IMPLOT_DIR}/implot_items.cpp
+    )
+    target_include_directories(imgui_objs PRIVATE
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+        ${IMPLOT_DIR}
+    )
+    target_compile_definitions(imgui_objs PRIVATE GL_SILENCE_DEPRECATION)
+    add_library(imgui INTERFACE)
+    target_sources(imgui INTERFACE $<TARGET_OBJECTS:imgui_objs>)
+    target_include_directories(imgui INTERFACE
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+        ${IMPLOT_DIR}
+    )
+    # Keep the browser UI support objects small; aggressive optimization makes
+    # the wasm link hit section-size limits in the current toolchain.
+    set_source_files_properties(
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+        ${IMPLOT_DIR}/implot.cpp
+        ${IMPLOT_DIR}/implot_items.cpp
+        PROPERTIES COMPILE_OPTIONS "-O1")
 else()
-    target_include_directories(imgui PUBLIC ${GLFW_INCLUDE_DIRS})
-    target_link_libraries(imgui PUBLIC ${GLFW_LIBRARIES})
-    target_link_directories(imgui PUBLIC ${GLFW_LIBRARY_DIRS})
+    add_library(imgui STATIC
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+        ${IMGUI_DIR}/imgui_demo.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+        ${IMPLOT_DIR}/implot.cpp
+        ${IMPLOT_DIR}/implot_items.cpp
+    )
+    target_include_directories(imgui PUBLIC
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+        ${IMPLOT_DIR}
+    )
+    # implot_items.cpp is extremely template-heavy: ~5 min to compile at -O2.
+    # It is not performance-critical for us, so build it at -O1 (~1 min). The last
+    # -O flag wins in GCC, so this overrides the RelWithDebInfo -O2.
+    set_source_files_properties(${IMPLOT_DIR}/implot_items.cpp PROPERTIES COMPILE_OPTIONS "-O1")
+    if(APPLE)
+        target_compile_definitions(imgui PUBLIC GL_SILENCE_DEPRECATION)
+    endif()
+    target_link_libraries(imgui PUBLIC OpenGL::GL)
+    if(TARGET glfw)
+        target_link_libraries(imgui PUBLIC glfw)
+    else()
+        target_include_directories(imgui PUBLIC ${GLFW_INCLUDE_DIRS})
+        target_link_libraries(imgui PUBLIC ${GLFW_LIBRARIES})
+        target_link_directories(imgui PUBLIC ${GLFW_LIBRARY_DIRS})
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -207,10 +261,9 @@ add_executable(LTEScope
     src/session/session.cpp
     src/state/config.cpp
     src/sdr/rtl_sdr_source.cpp
+    src/sdr/esp_sdr_source.cpp
     src/sdr/hackrf_source.cpp
-    
     src/sdr/wav_file_source.cpp
-    src/sdr/sdrpp_server_source.cpp
     src/sdr/iq_recorder.cpp
     src/dsp/jfft.cpp
     src/gui/waterfall.cpp
@@ -223,13 +276,18 @@ add_executable(LTEScope
     src/i18n/i18n.cpp
     src/update/version_check.cpp
 )
+if(NOT EMSCRIPTEN)
+    target_sources(LTEScope PRIVATE src/sdr/sdrpp_server_source.cpp)
+endif()
 target_include_directories(LTEScope PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${RTLSDR_INCLUDE_DIRS}
     ${HACKRF_INCLUDE_DIRS}
 )
-target_compile_definitions(LTEScope PRIVATE _USE_MATH_DEFINES)
-if(APPLE)
+if(WIN32 AND NOT EMSCRIPTEN)
+    target_compile_definitions(LTEScope PRIVATE _USE_MATH_DEFINES)
+endif()
+if(APPLE AND NOT EMSCRIPTEN)
     target_compile_definitions(LTEScope PRIVATE GL_SILENCE_DEPRECATION)
     target_link_libraries(LTEScope PRIVATE
         /opt/homebrew/opt/llvm/lib/c++/libc++.dylib
@@ -254,16 +312,39 @@ if(LIBRESDR_FOUND)
     target_include_directories(LTEScope PRIVATE ${UHD_INCLUDE_DIRS})
     target_link_directories(LTEScope PRIVATE ${UHD_LIBRARY_DIRS})
 endif()
-find_library(ZSTD_LIBRARIES NAMES zstd libzstd
-    PATHS /opt/homebrew/opt/zstd/lib /usr/local/opt/zstd/lib /opt/local/lib
-    REQUIRED)
-find_library(ZLIB_LIB NAMES z libz zlib REQUIRED)
-
-find_path(ZSTD_INCLUDE_DIRS NAMES zstd.h
-    PATHS /opt/homebrew/opt/zstd/include /usr/local/opt/zstd/include /opt/local/include
-    REQUIRED)
-target_include_directories(LTEScope PRIVATE ${ZSTD_INCLUDE_DIRS})
-target_link_libraries(LTEScope PRIVATE imgui ${ZLIB_LIB} ${ZSTD_LIBRARIES})
+if(NOT EMSCRIPTEN)
+    find_library(ZSTD_LIBRARIES NAMES zstd libzstd
+        PATHS /opt/homebrew/opt/zstd/lib /usr/local/opt/zstd/lib /opt/local/lib
+        REQUIRED)
+    find_path(ZSTD_INCLUDE_DIRS NAMES zstd.h
+        PATHS /opt/homebrew/opt/zstd/include /usr/local/opt/zstd/include /opt/local/include
+        REQUIRED)
+    target_include_directories(LTEScope PRIVATE ${ZSTD_INCLUDE_DIRS})
+    target_link_libraries(LTEScope PRIVATE imgui ${ZSTD_LIBRARIES})
+else()
+    target_link_libraries(LTEScope PRIVATE imgui)
+endif()
+if(EMSCRIPTEN)
+    target_link_options(LTEScope PRIVATE
+        "-sUSE_GLFW=3"
+        "-sUSE_WEBGL2=1"
+        "-sFULL_ES3=1"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sASSERTIONS=1"
+        "-sEXIT_RUNTIME=0"
+        "-sEXPORTED_FUNCTIONS=['_main','_cellscope_web_rtl_prepare_result','_cellscope_web_rtl_sample_block','_cellscope_web_esp_prepare_result','_cellscope_web_esp_sample_block']"
+        "--pre-js=${CMAKE_SOURCE_DIR}/src/sdr/webrtlsdr_bridge.js"
+        "--pre-js=${CMAKE_SOURCE_DIR}/src/sdr/webesp_bridge.js")
+    configure_file(${CMAKE_SOURCE_DIR}/web/ltescope.html.in
+        ${CMAKE_BINARY_DIR}/LTEScope.html
+        @ONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/web/flash.html
+        ${CMAKE_BINARY_DIR}/flash.html COPYONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md
+        ${CMAKE_BINARY_DIR}/THIRD_PARTY_NOTICES.md COPYONLY)
+    file(COPY ${CMAKE_SOURCE_DIR}/web/firmware
+        DESTINATION ${CMAKE_BINARY_DIR})
+endif()
 if(HAS_RTLSDR_LIB)
     target_link_libraries(LTEScope PRIVATE ${RTLSDR_LIBRARIES})
 endif()

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+  <link rel="icon" href="data:,">
+  <title>LTEScope Web</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f14;
+      --panel: #111821;
+      --panel-2: #0f1620;
+      --text: #e7edf6;
+      --muted: #8d99a8;
+      --accent: #5cc8ff;
+      --border: rgba(255,255,255,0.08);
+    }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at top, #142232 0%, var(--bg) 58%);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    header, footer {
+      padding: 12px 16px;
+      background: rgba(10, 16, 24, 0.86);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+    }
+    footer {
+      border-bottom: 0;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .hint {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    main {
+      min-height: 0;
+      display: grid;
+      place-items: stretch;
+    }
+    #canvas-wrap {
+      position: relative;
+      min-height: 0;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.03), transparent 22%),
+        var(--panel-2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+      background: #05080c;
+    }
+    #status {
+      color: var(--muted);
+    }
+    a {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">LTEScope</div>
+    <div class="hint">
+      Browser build. Use the app UI to choose a source and start capture.
+      WebUSB RTL-SDR and Web Serial ESP-SDR require HTTPS or localhost and a supported browser.
+    </div>
+  </header>
+
+  <main>
+    <div id="canvas-wrap">
+      <canvas id="canvas" tabindex="0"></canvas>
+    </div>
+  </main>
+
+  <footer>
+    <div id="status">Loading LTEScope.js...</div>
+    <div>
+      If the page stalls, confirm you are serving <code>LTEScope.js</code> and
+      <code>LTEScope.wasm</code> from the same directory as this HTML file.
+      Need firmware? <a href="flash.html">Open the ESP32 board flasher</a>.
+    </div>
+  </footer>
+
+  <script>
+    var Module = {
+      canvas: document.getElementById("canvas"),
+      print: function(text) {
+        var status = document.getElementById("status");
+        status.textContent = String(text);
+        console.log(text);
+      },
+      printErr: function(text) {
+        var status = document.getElementById("status");
+        status.textContent = String(text);
+        console.error(text);
+      },
+      locateFile: function(path) {
+        return path;
+      }
+    };
+  </script>
+  <script src="LTEScope.js"></script>
+</body>
+</html>

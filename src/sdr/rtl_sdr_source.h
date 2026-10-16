@@ -40,9 +40,18 @@ public:
     void stop() override;
     bool running() const override { return running_.load(); }
 
+#ifdef __EMSCRIPTEN__
+    using BrowserPrepareCb = std::function<void(bool ok, const std::string& err)>;
+    bool beginBrowserPrepare(int deviceIndex, BrowserPrepareCb cb, std::string& err);
+    void onBrowserPrepareResult(bool ok, const std::string& err);
+    void onAsync(unsigned char* buf, uint32_t len);
+#endif
+
 private:
+#ifndef __EMSCRIPTEN__
     static void asyncTrampoline(unsigned char* buf, uint32_t len, void* ctx);
     void onAsync(unsigned char* buf, uint32_t len);
+#endif
     void applyGain(); // pick nearest supported gain and apply
 
     rtlsdr_dev* dev_ = nullptr;
@@ -61,6 +70,12 @@ private:
 
     std::string tunerType_ = "-";
     double      tunerMaxFreq_ = 0.0;
+
+#ifdef __EMSCRIPTEN__
+    bool browserPrepared_ = false;
+    bool browserPreparing_ = false;
+    BrowserPrepareCb browserPrepareCb_;
+#endif
 
     // Gentle one-pole DC blocker: out = in - offset; offset += out * rate.
     // rate is derived from the sample rate for a low (~tens of Hz) corner so

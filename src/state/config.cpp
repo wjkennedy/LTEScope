@@ -42,10 +42,12 @@ void cfgWriteAll(App& app, ImGuiTextBuffer* buf)
     WF(iqBufferSec);
     WI(autoGain); WF(gainDb); WI(biasTee); WF(ppm); WI(dcBlock);
     WI(autoScale); WI(bandBrowse); WF(avgAlpha); WF(dbMin); WF(dbMax);
+    WI(spectrumPalette); WI(waterfallPalette);
     WF(browseEdgePct); WF(browseThrottleMs); WF(browseMinMovePct);
     WS(wavPath); WI(wavLoop);
     WS(serverHost); WI(serverPort); WI(serverCompression); WI(serverSampleType);
     WD(serverSampleRateMHz);
+    WI(espSampleRateIdx); WI(espAutoGain); WI(espGainIndex); WF(espPpm);
     WD(hackSampleRateMHz); WI(hackLna); WI(hackVga); WI(hackAmp); WI(hackBias);
 #ifdef HAS_AIRSPY
     WI(airspySampleRateIdx); WI(airspyGainMode); WI(airspySenseGain); WI(airspyLinearGain);
@@ -96,15 +98,24 @@ void cfgReadLine(App& app, const char* line)
 #define RD(f) if (!std::strcmp(key, #f)) { app.f = std::atof(val); return; }
 #define RS(f) if (!std::strcmp(key, #f)) { std::strncpy(app.f, val, sizeof(app.f) - 1); app.f[sizeof(app.f) - 1] = 0; return; }
     RI(sourceMode); RI(deviceIndex); RI(sampleRateIdx); RI(newBaud); RI(fftSizeIdx);
+    #ifdef __EMSCRIPTEN__
+    if (app.sourceMode == 2)
+        app.sourceMode = 0;
+    #else
+    if (app.sourceMode == 7)
+        app.sourceMode = 0;
+    #endif
     RB(autoAddLes); RI(maxLesAutoDecoders);
     RD(centerFreqMHz);
     RF(iqBufferSec);
     RB(autoGain); RF(gainDb); RB(biasTee); RF(ppm); RB(dcBlock);
     RB(autoScale); RB(bandBrowse); RF(avgAlpha); RF(dbMin); RF(dbMax);
+    RI(spectrumPalette); RI(waterfallPalette);
     RF(browseEdgePct); RF(browseThrottleMs); RF(browseMinMovePct);
     RS(wavPath); RB(wavLoop);
     RS(serverHost); RI(serverPort); RB(serverCompression); RI(serverSampleType);
     RD(serverSampleRateMHz);
+    RI(espSampleRateIdx); RB(espAutoGain); RI(espGainIndex); RF(espPpm);
     RD(hackSampleRateMHz); RI(hackLna); RI(hackVga); RB(hackAmp); RB(hackBias);
 #ifdef HAS_AIRSPY
     RI(airspySampleRateIdx); RI(airspyGainMode); RI(airspySenseGain); RI(airspyLinearGain);

@@ -5,6 +5,7 @@
 #include "dsp/jfft.h"
 #include "gui/waterfall.h"
 #include "sdr/rtl_sdr_source.h"
+#include "sdr/esp_sdr_source.h"
 #include "sdr/hackrf_source.h"
 #ifdef HAS_AIRSPY
 #include "sdr/airspy_source.h"
@@ -13,7 +14,9 @@
 #include "sdr/libresdr_source.h"
 #endif
 #include "sdr/wav_file_source.h"
+#ifndef __EMSCRIPTEN__
 #include "sdr/sdrpp_server_source.h"
+#endif
 #include "sdr/iq_recorder.h"
 #include "decode/band_plan.h"
 #include "decode/decoder_manager.h"
@@ -55,8 +58,11 @@ struct SpectrumView
 struct App
 {
     RtlSdrSource    sdr;
+    EspSdrSource    espSdr;
     WavFileSource   wav;
+#ifndef __EMSCRIPTEN__
     SdrppServerSource server;
+#endif
     HackRfSource    hack;
 #ifdef HAS_AIRSPY
     AirspySource    airspy;
@@ -65,7 +71,7 @@ struct App
     LibreSdrSource  libre;
 #endif
     SdrSource*      active = &sdr;
-    int  sourceMode = 0; // 0=RTL, 1=WAV, 2=SDR++ Server, 3=HackRF, 4=Dual RTL, 5=Airspy, 6=LibreSDR
+    int  sourceMode = 0; // 0=RTL, 1=WAV, 2=SDR++ Server, 3=HackRF, 4=Dual RTL, 5=Airspy, 6=LibreSDR, 7=ESP-SDR
     char wavPath[512] = "";
     bool wavLoop = true;
     char serverHost[128] = "localhost";
@@ -73,6 +79,12 @@ struct App
     bool serverCompression = true;
     int  serverSampleType = 1;
     double serverSampleRateMHz = 2.0;
+
+    // ESP32/S3 running receive-only ESP-SDR firmware (Web Serial browser build).
+    int   espSampleRateIdx = 0;
+    bool  espAutoGain = true;
+    int   espGainIndex = 32;
+    float espPpm = 0.0f;
 
     // HackRF
     double hackSampleRateMHz = 10.0;
@@ -121,6 +133,7 @@ struct App
 
     int  newBaud = 1;
     bool placingDecoder = false;
+    bool markerPlacementArmed = false; // explicit "place marker" mode from UI
     bool placingVoiceView = false; // true = started on voice SDR, false = primary
     double placingFreqMHz = 0.0;
     int  selectedDecoder = -1;
@@ -154,6 +167,16 @@ struct App
     bool   lteTrafficWatchedOnly = false;
     bool   lteUeCallsOnly        = false; // show only UEs on a detected call
     bool   showRawDebug         = false;  // raw LTE/Falcon/srsRAN log tail
+    int    lteSweepMode        = 2;       // 0=range, 1=presets, 2=presets+range
+    bool   lteSweepEnabled      = false;
+    double lteSweepStartMHz     = 698.0;
+    double lteSweepStopMHz      = 960.0;
+    double lteSweepStepMHz      = 1.0;
+    double lteSweepDwellMs      = 1200.0;
+    double lteSweepCurrentMHz   = 0.0;
+    size_t lteSweepIndex        = 0;
+    double lteSweepLastStepMs   = 0.0;
+    bool   lteSweepInitialized  = false;
 #endif
 
     std::vector<SdrDeviceInfo> devices;
@@ -172,6 +195,8 @@ struct App
     float dbMax = 0.0f;
     bool  dcBlock = true;
     bool  autoScale = true;
+    int   spectrumPalette = (int)ColorPalette::Classic;
+    int   waterfallPalette = (int)ColorPalette::Classic;
 
     std::string status = "Idle";
 

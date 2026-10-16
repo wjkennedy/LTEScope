@@ -1,2 +1,8 @@
 /build/
+/build-*/
 /RESOURCES/
+/build-firmware/
+/third_party/imgui
+/third_party/implot
+/web/firmware/**/*.bin
+/web/firmware/**/LICENSE.GPL-3.0-or-later.txt

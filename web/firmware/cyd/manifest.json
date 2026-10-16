@@ -1,0 +1,13 @@
+{
+  "name": "LTEScope — CYD-2432S028",
+  "version": "0.3.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "ltescope-cyd.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

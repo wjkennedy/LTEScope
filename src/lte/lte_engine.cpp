@@ -597,12 +597,20 @@ bool LteEngine::Impl::search_cell(CellInfo& out)
     int                           ret      = srsran_ue_cellsearch_scan(&cs, found, &max_nid2);
 
     bool ok = false;
-    if (ret > 0 && found[max_nid2].psr > 2.0f) {
+    const float psr  = found[max_nid2].psr;
+    const float peak = found[max_nid2].peak;
+    const float cfo  = found[max_nid2].cfo;
+    if (ret > 0 && psr > 3.0f && peak > 0.02f) {
         out.pci      = (int)found[max_nid2].cell_id;
-        out.peak     = found[max_nid2].peak;
-        out.cfo_hz   = found[max_nid2].cfo;
+        out.peak     = peak;
+        out.cfo_hz   = cfo;
         out.freq_mhz = cfg.center_freq_mhz;
         ok           = true;
+    } else if (ret > 0) {
+        diagLog("search_cell weak candidate ignored pci=" + std::to_string((int)found[max_nid2].cell_id) +
+                " psr=" + std::to_string(psr) +
+                " peak=" + std::to_string(peak) +
+                " cfo=" + std::to_string(cfo));
     }
     srsran_ue_cellsearch_free(&cs);
     return ok;
@@ -1013,6 +1021,14 @@ LteEngine::~LteEngine()
 
 void LteEngine::start(const EngineConfig& cfg)
 {
+#if defined(__EMSCRIPTEN__)
+    (void)cfg;
+    stop();
+    impl_->run.store(false);
+    impl_->st.store(EngineState::Idle);
+    impl_->set_status("LTE decode disabled in browser build");
+    return;
+#else
     stop();
     diagInstallCrashHandler();
     diagLog("LteEngine::start input_rate=" + std::to_string(cfg.input_sample_rate_hz) +
@@ -1037,10 +1053,17 @@ void LteEngine::start(const EngineConfig& cfg)
         impl_->set_status(buf);
     }
     impl_->worker = std::thread([this] { impl_->run_worker(); });
+#endif
 }
 
 void LteEngine::stop()
 {
+#if defined(__EMSCRIPTEN__)
+    impl_->run.store(false);
+    impl_->st.store(EngineState::Idle);
+    impl_->set_status("Idle");
+    return;
+#else
     if (!impl_->run.exchange(false)) {
         if (impl_->worker.joinable()) {
             impl_->worker.join();
@@ -1053,6 +1076,7 @@ void LteEngine::stop()
     }
     impl_->st.store(EngineState::Idle);
     impl_->set_status("Idle");
+#endif
 }
 
 bool LteEngine::running() const

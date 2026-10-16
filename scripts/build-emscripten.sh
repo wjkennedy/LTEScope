@@ -9,12 +9,18 @@ em_cache="${EM_CACHE:-${build_dir}/emcache}"
 
 export EM_CACHE="${em_cache}"
 
-# The web target uses the WebUSB RTL-SDR bridge in src/sdr/webrtlsdr_bridge.js.
+# Homebrew Emscripten 6 requires Python >=3.10. On macOS, /usr/bin/python3
+# can still be 3.9 even when a current Homebrew Python is installed.
+if [[ -x /opt/homebrew/opt/python@3.13/bin/python3 ]]; then
+    export PATH="/opt/homebrew/opt/python@3.13/bin:${PATH}"
+elif [[ -x /opt/homebrew/opt/python@3.14/bin/python3 ]]; then
+    export PATH="/opt/homebrew/opt/python@3.14/bin:${PATH}"
+fi
+
+# The web target includes WebUSB bridges for RTL-SDR and ESP-SDR.
 emcmake cmake -S "${root_dir}" -B "${build_dir}" -G Ninja \
     -DEMSCRIPTEN=ON \
-    -DHAS_LTE=ON \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER="${root_dir}/scripts/emcc-filter-wrapper.sh" \
-    -DCMAKE_CXX_COMPILER="${root_dir}/scripts/emxx-filter-wrapper.sh"
+    -DHAS_LTE=OFF \
+    -DCMAKE_BUILD_TYPE=Release
 
 cmake --build "${build_dir}" -j"${jobs}"

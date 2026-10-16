@@ -159,8 +159,16 @@ keeps the current directory.
 
 ## Emscripten
 
-Emscripten is not a supported build target yet. The current application still
-assumes desktop windowing, threading, file I/O, and SDR hardware backends, so a
-browser build would need a separate UI-only path or playback mode rather than a
-straight recompile.
+The browser target is supported for spectrum/waterfall operation with WebUSB
+RTL-SDR and Web Serial ESP-SDR sources. LTE decoding remains disabled in this
+target. Install Emscripten, CMake, and Ninja, then run:
+
+```bash
+./scripts/start-web.sh
 ```
+
+This performs an incremental build in `build-web/` and serves it at
+<http://localhost:8000/LTEScope.html>. The ESP32 firmware installer is at
+<http://localhost:8000/flash.html>. Chrome or Edge desktop is required for Web
+Serial, and the application must be served from `localhost` or HTTPS rather
+than opened with `file://`.

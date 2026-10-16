@@ -65,11 +65,20 @@ VersionCheck::~VersionCheck()
 
 void VersionCheck::start(const std::string& slug, const std::string& localVersion)
 {
+#if defined(__EMSCRIPTEN__)
+    // Browsers build without pthreads in this configuration, so avoid the
+    // background update thread entirely.
+    (void)slug;
+    (void)localVersion;
+    state_.store(Idle);
+    return;
+#else
     bool expected = false;
     if (!started_.compare_exchange_strong(expected, true))
         return;
     state_.store(Checking);
     thread_ = std::thread(&VersionCheck::run, this, slug, localVersion);
+#endif
 }
 
 std::string VersionCheck::latestVersion() { std::lock_guard<std::mutex> lk(mtx_); return latest_; }

@@ -10,6 +10,232 @@
 
 #if !defined(HAS_RTLSDR_LIB)
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+
+#ifdef signbit
+#undef signbit
+#endif
+#ifdef isfinite
+#undef isfinite
+#endif
+#ifdef isinf
+#undef isinf
+#endif
+#ifdef isnan
+#undef isnan
+#endif
+
+namespace {
+RtlSdrSource* g_browser_source = nullptr;
+}
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE void cellscope_web_rtl_prepare_result(int ok, const char* msg)
+{
+    if (g_browser_source)
+        g_browser_source->onBrowserPrepareResult(ok != 0, msg ? std::string(msg) : std::string());
+}
+
+EMSCRIPTEN_KEEPALIVE void cellscope_web_rtl_sample_block(const unsigned char* data, int len, double, int)
+{
+    if (g_browser_source && data && len > 0)
+        g_browser_source->onAsync(const_cast<unsigned char*>(data), (uint32_t)len);
+}
+}
+
+EM_JS(void, web_rtl_configure, (double centerFreq, double sampleRate, double gainDb, int biasTee, double ppm, int directSamplingMethod), {
+    Module.cellscopeRtl.configure({
+        centerFreq: centerFreq,
+        sampleRate: sampleRate,
+        gainDb: gainDb,
+        biasTee: !!biasTee,
+        ppm: ppm,
+        directSamplingMethod: directSamplingMethod,
+    });
+});
+
+EM_JS(void, web_rtl_begin_prepare, (), {
+    Module.cellscopeRtl.beginPrepare();
+});
+
+EM_JS(void, web_rtl_start_stream, (), {
+    Module.cellscopeRtl.startStream();
+});
+
+EM_JS(void, web_rtl_stop, (), {
+    Module.cellscopeRtl.stop();
+});
+
+EM_JS(void, web_rtl_set_center_freq, (double hz), {
+    Module.cellscopeRtl.setCenterFreq(hz);
+});
+
+EM_JS(void, web_rtl_set_sample_rate, (double hz), {
+    Module.cellscopeRtl.setSampleRate(hz);
+});
+
+EM_JS(void, web_rtl_set_gain, (double gainDb, int autoGain), {
+    Module.cellscopeRtl.setGain(autoGain ? -1 : gainDb);
+});
+
+EM_JS(void, web_rtl_set_bias_tee, (int on), {
+    Module.cellscopeRtl.setBiasTee(!!on);
+});
+
+EM_JS(void, web_rtl_set_ppm, (double ppm), {
+    Module.cellscopeRtl.setPpm(ppm);
+});
+
+EM_JS(void, web_rtl_set_direct_sampling, (int method), {
+    Module.cellscopeRtl.setDirectSampling(method);
+});
+
+RtlSdrSource::~RtlSdrSource()
+{
+    stop();
+}
+
+std::vector<SdrDeviceInfo> RtlSdrSource::listDevices()
+{
+    return {SdrDeviceInfo{0, "WebUSB RTL-SDR", "connect on Start"}};
+}
+
+void RtlSdrSource::setCenterFreq(double hz)
+{
+    centerFreq_ = hz;
+    if (browserPrepared_ || running_.load())
+        web_rtl_set_center_freq(hz);
+}
+
+void RtlSdrSource::setSampleRate(double hz)
+{
+    sampleRate_ = hz;
+    if (browserPrepared_ || running_.load())
+        web_rtl_set_sample_rate(hz);
+}
+
+void RtlSdrSource::setGain(double db)
+{
+    gainDb_ = db;
+    if (browserPrepared_ || running_.load())
+        web_rtl_set_gain(gainDb_, gainDb_ < 0.0 ? 1 : 0);
+}
+
+void RtlSdrSource::setBiasTee(bool on)
+{
+    biasTee_ = on;
+    if (browserPrepared_ || running_.load())
+        web_rtl_set_bias_tee(on ? 1 : 0);
+}
+
+void RtlSdrSource::setPpm(double ppm)
+{
+    ppm_ = ppm;
+    if (browserPrepared_ || running_.load())
+        web_rtl_set_ppm(ppm);
+}
+
+bool RtlSdrSource::beginBrowserPrepare(int, BrowserPrepareCb cb, std::string& err)
+{
+    if (browserPreparing_)
+    {
+        err = "RTL-SDR WebUSB prepare already in progress";
+        return false;
+    }
+
+    browserPrepareCb_ = std::move(cb);
+    browserPrepared_ = false;
+    browserPreparing_ = true;
+    g_browser_source = this;
+
+    web_rtl_configure(centerFreq_, sampleRate_, gainDb_, biasTee_ ? 1 : 0, ppm_, 0);
+    web_rtl_begin_prepare();
+    return true;
+}
+
+void RtlSdrSource::onBrowserPrepareResult(bool ok, const std::string& err)
+{
+    browserPreparing_ = false;
+    browserPrepared_ = ok;
+    if (!ok)
+        browserPrepareCb_ = nullptr;
+    if (browserPrepareCb_)
+        browserPrepareCb_(ok, err);
+    if (!ok)
+        running_.store(false);
+}
+
+bool RtlSdrSource::start(int, SdrSampleCb cb, std::string& err)
+{
+    if (running_.load())
+        return true;
+    if (!browserPrepared_)
+    {
+        err = "RTL-SDR WebUSB device is not prepared";
+        return false;
+    }
+
+    cb_ = std::move(cb);
+    dcOffRe_ = dcOffIm_ = 0.0f;
+    dcRate_ = (float)(50.0 / sampleRate_);
+    running_.store(true);
+    web_rtl_start_stream();
+    return true;
+}
+
+void RtlSdrSource::stop()
+{
+    running_.store(false);
+    browserPreparing_ = false;
+    browserPrepared_ = false;
+    browserPrepareCb_ = nullptr;
+    web_rtl_stop();
+    if (g_browser_source == this)
+        g_browser_source = nullptr;
+    cb_ = nullptr;
+}
+
+void RtlSdrSource::onAsync(unsigned char* buf, uint32_t len)
+{
+    if (!running_.load() || !cb_)
+        return;
+
+    uint32_t num = len / 2;
+    if (scratch_.size() < (size_t)num * 2)
+        scratch_.resize((size_t)num * 2);
+
+    float* out = scratch_.data();
+    bool dc = dcBlock_.load();
+    float offRe = dcOffRe_, offIm = dcOffIm_;
+    const float rate = dcRate_;
+    for (uint32_t i = 0; i < num; ++i)
+    {
+        float re = ((int)buf[i * 2] - 128) * (1.0f / 128.0f);
+        float im = ((int)buf[i * 2 + 1] - 128) * (1.0f / 128.0f);
+        if (dc)
+        {
+            float ore = re - offRe;
+            offRe += ore * rate;
+            float oim = im - offIm;
+            offIm += oim * rate;
+            out[i * 2]     = ore;
+            out[i * 2 + 1] = oim;
+        }
+        else
+        {
+            out[i * 2]     = re;
+            out[i * 2 + 1] = im;
+        }
+    }
+    dcOffRe_ = offRe;
+    dcOffIm_ = offIm;
+
+    cb_(out, (int)num);
+}
+
+#else
+
 RtlSdrSource::~RtlSdrSource() = default;
 
 std::vector<SdrDeviceInfo> RtlSdrSource::listDevices()
@@ -30,6 +256,8 @@ bool RtlSdrSource::start(int, SdrSampleCb, std::string& err)
 }
 
 void RtlSdrSource::stop() {}
+
+#endif // __EMSCRIPTEN__
 
 #else
 

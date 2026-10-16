@@ -461,34 +461,41 @@ struct LteEngine::Impl {
 
     bool search_cell(CellInfo& out)
     {
-        srsran_ue_cellsearch_t cs;
+        SrsranHandle<srsran_ue_cellsearch_t, srsran_ue_cellsearch_free> cs(new srsran_ue_cellsearch_t{});
         diagLog("search_cell start rx_antennas=" + std::to_string(cfg.nof_rx_antennas) +
                 " center_mhz=" + std::to_string(cfg.center_freq_mhz));
-        if (srsran_ue_cellsearch_init_multi(&cs, 8, recv_cb, cfg.nof_rx_antennas, this)) {
+        if (srsran_ue_cellsearch_init_multi(cs.get(), 8, recv_cb, cfg.nof_rx_antennas, this)) {
             set_status("cellsearch init failed");
             diagLog("search_cell init_multi failed");
             return false;
         }
-        srsran_ue_cellsearch_set_nof_valid_frames(&cs, 4);
+        srsran_ue_cellsearch_set_nof_valid_frames(cs.get(), 4);
 
         srsran_ue_cellsearch_result_t found[3] = {};
         uint32_t                      max_nid2 = 0;
-        int                           ret      = srsran_ue_cellsearch_scan(&cs, found, &max_nid2);
+        int                           ret      = srsran_ue_cellsearch_scan(cs.get(), found, &max_nid2);
         bool ok = false;
-        if (ret > 0 && found[max_nid2].psr > 2.0f) {
+        const float psr   = found[max_nid2].psr;
+        const float peak  = found[max_nid2].peak;
+        const float cfo   = found[max_nid2].cfo;
+        if (ret > 0 && psr > 3.0f && peak > 0.02f) {
             out.pci      = (int)found[max_nid2].cell_id;
-            out.peak     = found[max_nid2].peak;
-            out.cfo_hz   = found[max_nid2].cfo;
+            out.peak     = peak;
+            out.cfo_hz   = cfo;
             out.freq_mhz = cfg.center_freq_mhz;
             ok           = true;
+        } else if (ret > 0) {
+            diagLog("search_cell weak candidate ignored pci=" + std::to_string((int)found[max_nid2].cell_id) +
+                    " psr=" + std::to_string(psr) +
+                    " peak=" + std::to_string(peak) +
+                    " cfo=" + std::to_string(cfo));
         }
         diagLog("search_cell ret=" + std::to_string(ret) +
                 " max_nid2=" + std::to_string(max_nid2) +
-                " psr=" + std::to_string(found[max_nid2].psr) +
-                " peak=" + std::to_string(found[max_nid2].peak) +
-                " cfo=" + std::to_string(found[max_nid2].cfo) +
+                " psr=" + std::to_string(psr) +
+                " peak=" + std::to_string(peak) +
+                " cfo=" + std::to_string(cfo) +
                 (ok ? " ok" : " failed"));
-        srsran_ue_cellsearch_free(&cs);
         return ok;
     }
 
@@ -500,24 +507,23 @@ struct LteEngine::Impl {
         cell.nof_ports     = 1;
         cell.nof_prb       = SRSRAN_UE_MIB_NOF_PRB;
 
-        srsran_ue_mib_sync_t mib = {};
+        SrsranHandle<srsran_ue_mib_sync_t, srsran_ue_mib_sync_free> mib(new srsran_ue_mib_sync_t{});
 
         diagLog("decode_mib start pci=" + std::to_string(io.pci) +
                 " rx_antennas=" + std::to_string(cfg.nof_rx_antennas));
 
-        if (srsran_ue_mib_sync_init_multi(&mib, recv_cb, cfg.nof_rx_antennas, this)) {
+        if (srsran_ue_mib_sync_init_multi(mib.get(), recv_cb, cfg.nof_rx_antennas, this)) {
             set_status("mib sync init failed");
             diagLog("decode_mib pci=" + std::to_string(io.pci) + " init_multi failed");
-            srsran_ue_mib_sync_free(&mib);
             return false;
         }
 
-        bool cell_ok = (srsran_ue_mib_sync_set_cell(&mib, cell) == SRSRAN_SUCCESS);
+        bool cell_ok = (srsran_ue_mib_sync_set_cell(mib.get(), cell) == SRSRAN_SUCCESS);
         if (!cell_ok) {
             set_status("mib sync set_cell failed");
             diagLog("decode_mib pci=" + std::to_string(io.pci) + " set_cell failed");
         } else {
-            mib.ue_sync.cfo_correct_enable_track = true;
+            mib->ue_sync.cfo_correct_enable_track = true;
         }
 
         uint8_t  bch[SRSRAN_BCH_PAYLOAD_LEN] = {};
@@ -526,7 +532,7 @@ struct LteEngine::Impl {
         int      ret                         = SRSRAN_UE_MIB_NOTFOUND;
 
         if (cell_ok) {
-            ret = srsran_ue_mib_sync_decode(&mib, 40, bch, &nof_ports, &sfn_offset);
+            ret = srsran_ue_mib_sync_decode(mib.get(), 40, bch, &nof_ports, &sfn_offset);
         }
 
         diagLog("decode_mib pci=" + std::to_string(io.pci) +
@@ -540,21 +546,6 @@ struct LteEngine::Impl {
             io.nof_ports = (int)nof_ports;
             io.sfn       = (int)sfn;
         }
-
-        // srsran_ue_mib_sync_set_cell() may free ue_mib on failure, so only
-        // free the inner objects we know remain valid.
-        if (mib.nof_rx_channels > 0) {
-            for (uint32_t i = 0; i < mib.nof_rx_channels; ++i) {
-                if (mib.sf_buffer[i]) {
-                    free(mib.sf_buffer[i]);
-                    mib.sf_buffer[i] = nullptr;
-                }
-            }
-        }
-        if (cell_ok) {
-            srsran_ue_mib_free(&mib.ue_mib);
-        }
-        srsran_ue_sync_free(&mib.ue_sync);
 
         if (!cell_ok) {
             return false;
@@ -792,6 +783,14 @@ LteEngine::~LteEngine()
 
 void LteEngine::start(const EngineConfig& cfg)
 {
+#if defined(__EMSCRIPTEN__)
+    (void)cfg;
+    stop();
+    impl_->run.store(false);
+    impl_->st.store(EngineState::Idle);
+    impl_->set_status("LTE decode disabled in browser build");
+    return;
+#else
     stop();
     diagInstallCrashHandler();
     diagLog("LteEngine::start input_rate=" + std::to_string(cfg.input_sample_rate_hz) +
@@ -818,10 +817,17 @@ void LteEngine::start(const EngineConfig& cfg)
         impl_->set_status(buf);
     }
     impl_->worker = std::thread([this] { impl_->run_worker(); });
+#endif
 }
 
 void LteEngine::stop()
 {
+#if defined(__EMSCRIPTEN__)
+    impl_->run.store(false);
+    impl_->st.store(EngineState::Idle);
+    impl_->set_status("Idle");
+    return;
+#else
     if (!impl_->run.exchange(false)) {
         if (impl_->worker.joinable()) {
             impl_->worker.join();
@@ -834,6 +840,7 @@ void LteEngine::stop()
     }
     impl_->st.store(EngineState::Idle);
     impl_->set_status("Idle");
+#endif
 }
 
 bool LteEngine::running() const

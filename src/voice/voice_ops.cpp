@@ -16,8 +16,14 @@ void retuneActive(App& app, double centerMHz)
     app.viewA.resetView = true;
     if (app.sourceMode == 0)
         app.sdr.setCenterFreq(hz);
+#ifdef __EMSCRIPTEN__
+    else if (app.sourceMode == 7)
+        app.espSdr.setCenterFreq(hz);
+#endif
+#ifndef __EMSCRIPTEN__
     else if (app.sourceMode == 2)
         app.server.setCenterFreq(hz);
+#endif
     else if (app.sourceMode == 3)
         app.hack.setCenterFreq(hz);
 #ifdef HAS_AIRSPY
@@ -50,8 +56,14 @@ void retunePreserving(App& app, double centerMHz)
     app.centerFreqMHz = centerMHz;
     if (app.sourceMode == 0 || app.sourceMode == 4)
         app.sdr.setCenterFreq(hz);
+#ifdef __EMSCRIPTEN__
+    else if (app.sourceMode == 7)
+        app.espSdr.setCenterFreq(hz);
+#endif
+#ifndef __EMSCRIPTEN__
     else if (app.sourceMode == 2)
         app.server.setCenterFreq(hz);
+#endif
     else if (app.sourceMode == 3)
         app.hack.setCenterFreq(hz);
 #ifdef HAS_AIRSPY

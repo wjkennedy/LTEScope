@@ -1,0 +1,3 @@
+# Heltec WiFi LoRa 32 V3 exposes UART0 through an original CP2102 bridge.
+# Use a standard divisor supported reliably by the macOS CP210x driver.
+CONFIG_ESP_SDR_UART_BAUD=921600

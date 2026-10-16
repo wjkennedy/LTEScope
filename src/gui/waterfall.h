@@ -6,6 +6,18 @@
 #include <cstdint>
 #include <vector>
 
+enum class ColorPalette
+{
+    Classic = 0,
+    Viridis,
+    Magma,
+    Grayscale,
+    BlueWhite,
+};
+
+constexpr int kColorPaletteCount = 5;
+extern const char* const kColorPaletteLabels[kColorPaletteCount];
+
 class Waterfall
 {
 public:
@@ -23,17 +35,26 @@ public:
     void draw(const ImVec2& size, float uMin = 0.0f, float uMax = 1.0f,
               float xFracLo = 0.0f, float xFracHi = 1.0f);
 
+    void setPalette(ColorPalette palette);
+    ColorPalette palette() const { return palette_; }
+
+    static void colorForPalette(ColorPalette palette, float t,
+                                uint8_t& r, uint8_t& g, uint8_t& b);
+
     void clear();
 
 private:
     void ensureTexture(int bins);
-    static void colormap(float t, uint8_t& r, uint8_t& g, uint8_t& b);
+    void uploadRecoloredTexture();
 
     unsigned int tex_ = 0;       // GLuint
     int texW_ = 0;
     int texH_ = 1024;
     int writePtr_ = 0;
     bool filled_ = false;
+    bool paletteDirty_ = false;
+    ColorPalette palette_ = ColorPalette::Classic;
 
     std::vector<uint8_t> rowBuf_;
+    std::vector<uint8_t> intensityBuf_;
 };

@@ -1,13 +1,13 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-root_dir="$(cd "${script_dir}/.." && pwd)"
-build_dir="${BUILD_DIR:-${root_dir}/build-linux}"
-build_type="${BUILD_TYPE:-RelWithDebInfo}"
-jobs="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
-c_compiler="${C_COMPILER:-cc}"
-cxx_compiler="${CXX_COMPILER:-c++}"
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+root_dir=$(cd -- "${script_dir}/.." && pwd)
+build_dir=${BUILD_DIR:-$root_dir/build-linux}
+build_type=${BUILD_TYPE:-RelWithDebInfo}
+jobs=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}
+c_compiler=${C_COMPILER:-cc}
+cxx_compiler=${CXX_COMPILER:-c++}
 
 if ! command -v pkg-config >/dev/null 2>&1; then
     echo "pkg-config is required for the Linux build" >&2
