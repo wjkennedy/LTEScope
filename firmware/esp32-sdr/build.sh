@@ -48,7 +48,15 @@ sdkconfig_defaults="${source_dir}/sdkconfig.defaults.${chip}"
 if [[ "${target}" == "heltec-v3" ]]; then
   sdkconfig="${build_dir}/sdkconfig.heltec-v3"
   sdkconfig_defaults="${sdkconfig_defaults};${script_dir}/sdkconfig.heltec-v3.defaults"
+elif [[ "${target}" == "cyd" ]]; then
+  sdkconfig="${build_dir}/sdkconfig.cyd"
+  sdkconfig_defaults="${sdkconfig_defaults};${script_dir}/sdkconfig.cyd.defaults"
 fi
+
+# These are reproducible board profiles, not interactive menuconfig builds.
+# Regenerate the target sdkconfig so a changed checked-in default cannot be
+# silently masked by a stale generated value from an earlier build.
+rm -f "${sdkconfig}"
 
 "${IDF_PATH}/tools/idf.py" -C "${source_dir}" -B "${build_dir}" \
   -DIDF_TARGET="${chip}" \

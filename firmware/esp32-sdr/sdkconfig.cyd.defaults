@@ -1,0 +1,8 @@
+# CYD-2432S028 commonly exposes UART0 through a CH340 bridge.
+# High rates produced corrupt reads on the tested macOS CH34x path. Start from
+# the universally supported rate; snapshots will be slow but deterministic.
+CONFIG_ESP_SDR_UART_BAUD=115200
+# UART0 is the receiver protocol. Do not let the ESP-IDF application console
+# retain or reinstall a driver on the same peripheral.
+# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
+CONFIG_ESP_CONSOLE_NONE=y

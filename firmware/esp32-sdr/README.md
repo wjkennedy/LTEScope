@@ -25,10 +25,11 @@ connector through a CP2102, so its stock connection uses snapshot mode. A
 separate USB connector wired to ESP32-S3 GPIO19/20 can enable native USB on a
 hardware-modified Heltec board.
 
-The Heltec profile starts UART0 at 921600 baud, a standard divisor that is
-reliable with its original CP2102 and the macOS CP210x driver. The browser
-selects this rate from the bridge's USB vendor ID. T-Display native USB and
-the CYD CH340 profile retain the upstream 2 Mbaud setting.
+The Heltec profile starts UART0 at 921600 baud. The CYD profile currently uses
+a conservative 115200 baud because high-rate transfers were corrupt through
+the tested CH340/macOS path; its snapshot refresh is correspondingly slow.
+The browser selects these rates from the bridge's USB vendor ID. T-Display
+native USB retains the upstream 2 Mbaud setting.
 
 Unlike the previous Zephyr basis, this firmware also supports the classic
 ESP32 in the CYD. Its snapshot captures have transfer gaps, but they cover a
@@ -93,7 +94,8 @@ CYD:          ESP32SDR 6 burst 16380
 In LTEScope, choose **ESP-SDR board**, click **Start**, and select the desired
 serial device. Native USB on T-Display enables continuous decimated IQ. Heltec
 and CYD operate in gapped snapshot mode. The browser selects 921600 baud for
-the Heltec CP2102 and 2 Mbaud for native Espressif USB and CYD CH340 devices.
+the Heltec CP2102, 115200 baud for the CYD CH340, and 2 Mbaud for native
+Espressif USB.
 During connection the app should say **Connecting ESP-SDR** and then show the
 firmware identity above. If it remains at the Web Serial handshake, the serial
 port or baud-rate negotiation has not completed.

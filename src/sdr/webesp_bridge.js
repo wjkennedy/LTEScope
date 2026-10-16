@@ -41,7 +41,7 @@ Module.cellscopeEsp = (() => {
 
   async function fill(count) {
     while (state.buffer.byteLength < count) {
-      const result = await state.reader.read();
+      const result = await readChunk();
       if (result.done) throw new Error("ESP-SDR serial port closed");
       append(result.value);
     }
@@ -62,9 +62,23 @@ Module.cellscopeEsp = (() => {
         state.buffer = state.buffer.slice(newline + 1);
         return line;
       }
-      const result = await state.reader.read();
+      const result = await readChunk();
       if (result.done) throw new Error("ESP-SDR serial port closed");
       append(result.value);
+    }
+  }
+
+  async function readChunk(timeoutMs = 5000) {
+    let timer;
+    try {
+      return await Promise.race([
+        state.reader.read(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("ESP-SDR serial response timed out")), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -127,9 +141,11 @@ Module.cellscopeEsp = (() => {
       ]});
       if (state.cancelled) return;
       const usbInfo = port.getInfo ? port.getInfo() : {};
-      // Heltec V3's original CP2102 bridge uses a standard 921.6 kbaud divisor. Native
-      // Espressif USB and the CYD's CH340 use the firmware's 2 Mbaud default.
-      const baudRate = usbInfo.usbVendorId === 0x10c4 ? 921600 : 2000000;
+      // Board-specific conservative rates: Heltec's CP2102 is reliable at
+      // 921.6 kbaud, while the tested CYD CH340 needs 115.2 kbaud. Native
+      // Espressif USB retains the firmware's 2 Mbaud default.
+      const baudRate = usbInfo.usbVendorId === 0x303a ? 2000000 :
+        usbInfo.usbVendorId === 0x10c4 ? 921600 : 115200;
       await port.open({baudRate, bufferSize: 65536});
       state.port = port;
       state.reader = port.readable.getReader();
