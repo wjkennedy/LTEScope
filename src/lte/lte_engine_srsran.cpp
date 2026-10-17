@@ -500,7 +500,7 @@ struct LteEngine::Impl {
                 " psr=" + std::to_string(psr) +
                 " peak=" + std::to_string(peak) +
                 " cfo=" + std::to_string(cfo) +
-                (ok ? " ok" : " failed"));
+                (ok ? " cell-found" : ret < 0 ? " error" : " no-cell"));
         return ok;
     }
 
@@ -753,7 +753,7 @@ struct LteEngine::Impl {
         while (run.load()) {
             if (!search_cell(info)) {
                 set_status("Searching for cell... (attempt " + std::to_string(++attempts) + ")");
-                diagLog("Error searching cell attempt=" + std::to_string(attempts));
+                diagLog("search continuing attempt=" + std::to_string(attempts));
                 continue;
             }
             set_status("Cell PCI " + std::to_string(info.pci) + " found, decoding MIB...");

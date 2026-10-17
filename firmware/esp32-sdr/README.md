@@ -123,11 +123,13 @@ firmware identity above. If it remains at the Web Serial handshake, the serial
 port or baud-rate negotiation has not completed.
 
 Native builds retain the full LTE decoder and allow it to be started with an
-ESP-SDR source selected. T-Display's 250 kS/s default and experimental 500 kS/s
-stream remain undersampled. The experimental 2 MS/s IQ1 stream meets the
+ESP-SDR source selected. T-Display's lower-rate IQ8 and experimental 500 kS/s
+IQ4 streams remain undersampled. The experimental 2 MS/s IQ1 stream meets the
 decoder's nominal 1.92 MS/s input rate, but its sign-only quantization and USB
 continuity still make this an optimization and signal-processing experiment
 rather than a claim of full-channel LTE support.
+The native app now defaults ESP-SDR to 2 MS/s and automatically switches a
+persisted lower-rate T-Display stream to 2 MS/s when LTE decode starts.
 The LTE sweep also supports ESP-SDR and restarts the serial IQ stream after each
 frequency change.
 

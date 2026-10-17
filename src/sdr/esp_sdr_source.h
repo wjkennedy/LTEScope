@@ -58,7 +58,7 @@ private:
     std::atomic<bool> dcBlock_{true};
     SdrSampleCb cb_;
     double centerFreq_ = 1960.0e6;
-    double sampleRate_ = 250.0e3;
+    double sampleRate_ = 2.0e6;
     double gainIndex_ = -1.0;
     double ppm_ = 0.0;
     double minFreq_ = 0.0;

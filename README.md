@@ -25,12 +25,14 @@ input rate, such as a supported RTL-SDR, for cell search and decoding.
 
 The ESP-SDR integration is currently a complementary spectrum-monitoring path
 and an experimental LTE input. T-Display S3 supports 15.625–250 kS/s IQ8 plus
-LTEScope-specific experimental 500 kS/s IQ4 and 2 MS/s IQ1 modes, while Heltec
-and the intended CYD mode return gapped snapshots. Both are useful for finding
-activity and displaying a waterfall, but neither supplies the decoder's nominal
-continuous 1.92 MS/s input. The native app nevertheless exposes the LTE controls
-and permits undersampled/snapshot experiments; it warns instead of blocking
-them. LoRa receive telemetry is also planned as a separate input.
+LTEScope-specific experimental 500 kS/s IQ4 and continuous 2 MS/s IQ1 modes,
+while Heltec and the intended CYD mode return gapped snapshots. The T-Display's
+2 MS/s mode meets the decoder's minimum input rate, though its sign-only
+quantization remains experimental. The lower-rate and snapshot modes remain
+useful for finding activity and displaying a waterfall but cannot contain a
+gapless LTE channel. When LTE decode is started on a continuous T-Display, the
+native app automatically switches a persisted lower-rate selection to 2 MS/s.
+LoRa receive telemetry is also planned as a separate input.
 
 The native LTE sweep can retune ESP-SDR as well as conventional SDR sources.
 For T-Display it stops and resynchronizes the serial IQ stream at each step.

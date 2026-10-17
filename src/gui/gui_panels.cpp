@@ -1910,7 +1910,13 @@ void drawLte(App& app)
     return;
 #else
     const bool srcRunning = app.active && app.active->running();
-    if (srcRunning && app.active->sampleRate() < 1.92e6)
+    const bool espCanSwitchToLteRate = srcRunning && app.sourceMode == 7 &&
+                                       app.espSdr.continuous() &&
+                                       app.active->sampleRate() < 1.92e6;
+    if (espCanSwitchToLteRate)
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f),
+                           "LTE start will switch T-Display to 2.000 MS/s IQ1.");
+    else if (srcRunning && app.active->sampleRate() < 1.92e6)
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f),
                            "Experimental undersampled input: %.3f MS/s (decoder nominal: 1.920 MS/s).",
                            app.active->sampleRate() / 1e6);
@@ -1919,12 +1925,27 @@ void drawLte(App& app)
         ImGui::BeginDisabled(!srcRunning);
         if (ImGui::Button("Start LTE decode"))
         {
-            lte::EngineConfig cfg;
-            cfg.input_sample_rate_hz = app.active->sampleRate();
-            cfg.center_freq_mhz      = app.active->centerFreq() / 1e6;
-            cfg.nof_rx_antennas      = 1;
-            app.lteEngine.start(cfg);
-            app.lteRunning = true;
+            bool ready = true;
+            // The persisted ESP-SDR selection predates the high-rate mode and
+            // may still be 250 kS/s.  A continuous T-Display can be restarted
+            // at the only rate that preserves the minimum LTE bandwidth.
+            if (espCanSwitchToLteRate)
+            {
+                app.espSampleRateIdx = 6;
+                app.espSdr.setSampleRate(2.0e6);
+                ready = app.espSdr.running();
+                if (!ready)
+                    app.status = "ESP-SDR failed to restart at 2 MS/s; restart the source and retry LTE";
+            }
+            if (ready)
+            {
+                lte::EngineConfig cfg;
+                cfg.input_sample_rate_hz = app.active->sampleRate();
+                cfg.center_freq_mhz      = app.active->centerFreq() / 1e6;
+                cfg.nof_rx_antennas      = 1;
+                app.lteEngine.start(cfg);
+                app.lteRunning = true;
+            }
         }
         ImGui::EndDisabled();
         if (!srcRunning)

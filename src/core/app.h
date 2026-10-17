@@ -83,7 +83,9 @@ struct App
     // ESP32/S3 running receive-only ESP-SDR firmware.
     int   espDeviceIndex = 0;
     std::vector<SdrDeviceInfo> espDevices;
-    int   espSampleRateIdx = 0;
+    // Prefer the T-Display's continuous 2 MS/s IQ1 mode.  Lower-rate modes
+    // remain selectable for spectrum work, but cannot contain an LTE channel.
+    int   espSampleRateIdx = 6;
     bool  espAutoGain = true;
     int   espGainIndex = 32;
     float espPpm = 0.0f;
